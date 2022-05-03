@@ -1,0 +1,4 @@
+.prepare
+padlock
+tmp/
+docs/swagger.*
