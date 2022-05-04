@@ -1,5 +1,12 @@
 # Golang Support Packages
 
+[![MIT][License-Image]][License-Url] [![Go Report Card][ReportCard-Image]][ReportCard-Url] [![CICD](https://github.com/alwitt/go-utils/actions/workflows/cicd.yaml/badge.svg?branch=main)](https://github.com/alwitt/go-utils/actions/workflows/cicd.yaml)
+
+[License-Url]: https://mit-license.org/
+[License-Image]: https://img.shields.io/badge/License-MIT-blue.svg
+[ReportCard-Url]: https://goreportcard.com/report/github.com/alwitt/go-utils
+[ReportCard-Image]: https://goreportcard.com/badge/github.com/alwitt/go-utils
+
 Provides common support components used in other Golang projects.
 
 ## Components Provided
