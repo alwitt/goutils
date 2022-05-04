@@ -48,7 +48,7 @@ GetLogTagsForContext creates a new Apex log.Fields metadata structure for a spec
  @return the new Apec log.Fields metadata
 */
 func (h RestAPIHandler) GetLogTagsForContext(ctxt context.Context) log.Fields {
-	theTags := h.Component.getLogTagsForContext()
+	theTags := h.Component.NewLogTagsForContext()
 	if ctxt.Value(RestRequestParamKey{}) != nil {
 		v, ok := ctxt.Value(RestRequestParamKey{}).(RestRequestParam)
 		if ok {

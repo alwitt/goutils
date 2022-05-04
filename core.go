@@ -16,8 +16,8 @@ type Component struct {
 	LogTags log.Fields
 }
 
-// getLogTagsForContext generates a new deep-copied LogTags for an execution context
-func (c Component) getLogTagsForContext() log.Fields {
+// NewLogTagsForContext generates a new deep-copied LogTags for an execution context
+func (c Component) NewLogTagsForContext() log.Fields {
 	result := log.Fields{}
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(&c.LogTags); err != nil {
