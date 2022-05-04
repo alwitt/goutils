@@ -1,0 +1,11 @@
+image: golang:1.18.1-alpine
+
+stages:
+  - test
+
+cicd:
+  stage: test
+  script:
+    - go fmt $(go list ./...)
+    - go vet $(go list ./...)
+    - go test ./...
