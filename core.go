@@ -2,6 +2,7 @@ package goutils
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"fmt"
 	"net/http"
@@ -10,13 +11,23 @@ import (
 	"github.com/apex/log"
 )
 
+// LogMetadataModifier is the function signature of a callback to update log.Fields with additional
+// key-value pairs.
+type LogMetadataModifier func(context.Context, log.Fields)
+
 // Component is the base structure for all components
 type Component struct {
 	// LogTags the Apex logging message metadata tags
 	LogTags log.Fields
+	// LogTagModifiers is the list of log metadata modifier callbacks
+	LogTagModifiers []LogMetadataModifier
 }
 
-// NewLogTagsForContext generates a new deep-copied LogTags for an execution context
+/*
+NewLogTagsForContext generates a new deep-copied LogTags for an execution context
+
+ @return a new log.Fields
+*/
 func (c Component) NewLogTagsForContext() log.Fields {
 	result := log.Fields{}
 	var buf bytes.Buffer
@@ -27,6 +38,20 @@ func (c Component) NewLogTagsForContext() log.Fields {
 		return c.LogTags
 	}
 	return result
+}
+
+/*
+GetLogTagsForContext creates a new Apex log.Fields metadata structure for a specific context
+
+ @param ctxt context.Context - a request context
+ @return the new Apec log.Fields metadata
+*/
+func (c Component) GetLogTagsForContext(ctxt context.Context) log.Fields {
+	theTags := c.NewLogTagsForContext()
+	for _, modifer := range c.LogTagModifiers {
+		modifer(ctxt, theTags)
+	}
+	return theTags
 }
 
 // ======================================================================================
@@ -74,5 +99,20 @@ func (i *RestRequestParam) updateLogTags(tags log.Fields) {
 	tags["request_timestamp"] = i.Timestamp.UTC().Format(time.RFC3339Nano)
 	for header, headerValues := range i.RequestHeaders {
 		tags[header] = headerValues
+	}
+}
+
+/*
+ModifyLogMetadataByRestRequestParam update log metadata with info from RestRequestParam
+
+ @param ctxt context.Context - a request context
+ @param theTags log.Fields - a log metadata to update
+*/
+func ModifyLogMetadataByRestRequestParam(ctxt context.Context, theTags log.Fields) {
+	if ctxt.Value(RestRequestParamKey{}) != nil {
+		v, ok := ctxt.Value(RestRequestParamKey{}).(RestRequestParam)
+		if ok {
+			v.updateLogTags(theTags)
+		}
 	}
 }

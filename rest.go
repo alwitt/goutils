@@ -42,23 +42,6 @@ type RestAPIBaseResponse struct {
 }
 
 /*
-GetLogTagsForContext creates a new Apex log.Fields metadata structure for a specific context
-
- @param ctxt context.Context - a request context
- @return the new Apec log.Fields metadata
-*/
-func (h RestAPIHandler) GetLogTagsForContext(ctxt context.Context) log.Fields {
-	theTags := h.Component.NewLogTagsForContext()
-	if ctxt.Value(RestRequestParamKey{}) != nil {
-		v, ok := ctxt.Value(RestRequestParamKey{}).(RestRequestParam)
-		if ok {
-			v.updateLogTags(theTags)
-		}
-	}
-	return theTags
-}
-
-/*
 LoggingMiddleware is a support middleware to be used with Mux to perform request logging
 
  @param next http.HandlerFunc - the core request handler function
