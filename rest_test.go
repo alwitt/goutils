@@ -263,7 +263,7 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 			assert.Nil(ctxt.Err())
 		case rx, ok := <-testMsgRX:
 			assert.True(ok)
-			assert.Equal(newMsg.Timestamp.Unix(), rx.Timestamp.Unix())
+			assert.Equal(newMsg.Timestamp.UnixMicro(), rx.Timestamp.UnixMicro())
 			assert.Equal(newMsg.Msg, rx.Msg)
 		}
 	}
