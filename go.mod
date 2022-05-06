@@ -1,4 +1,4 @@
-module github.com/alwitt/go-utils
+module github.com/alwitt/goutils
 
 go 1.18
 
