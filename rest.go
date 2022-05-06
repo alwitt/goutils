@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"time"
 
 	"github.com/apex/log"
 	"github.com/google/uuid"
+	"github.com/urfave/negroni"
 )
 
 // RestAPIHandler base REST API handler
@@ -89,14 +89,19 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 		// Construct new context
 		ctxt := context.WithValue(r.Context(), RestRequestParamKey{}, params)
 		// Make the request
-		respRecorder := httptest.NewRecorder()
-		next(respRecorder, r.WithContext(ctxt))
+		newRespWriter := negroni.NewResponseWriter(rw)
+		next(newRespWriter, r.WithContext(ctxt))
+		if h.CallRequestIDHeaderField != nil {
+			newRespWriter.Header().Set(*h.CallRequestIDHeaderField, reqID)
+		}
+		newRespWriter.Flush()
 		respTimestamp := time.Now()
 		// Log result of request
 		logTags := h.GetLogTagsForContext(ctxt)
-		respLen := respRecorder.Body.Len()
+		respLen := newRespWriter.Size()
+		respCode := newRespWriter.Status()
 		log.WithFields(logTags).
-			WithField("response_code", respRecorder.Code).
+			WithField("response_code", respCode).
 			WithField("response_size", respLen).
 			WithField("response_timestamp", respTimestamp.UTC().Format(time.RFC3339Nano)).
 			Warn(
@@ -107,23 +112,12 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 					params.Method,
 					params.URI,
 					params.Proto,
-					respRecorder.Code,
+					respCode,
 					respLen,
 					requestReferer,
 					userAgentString,
 				),
 			)
-		// Copy the recorded response to the response writer
-		for k, v := range respRecorder.Header() {
-			rw.Header()[k] = v
-		}
-		if h.CallRequestIDHeaderField != nil {
-			rw.Header().Set(*h.CallRequestIDHeaderField, reqID)
-		}
-		rw.WriteHeader(respRecorder.Code)
-		if _, err := respRecorder.Body.WriteTo(rw); err != nil {
-			log.WithError(err).WithFields(logTags).Errorf("Failed to transfer response to actual writer")
-		}
 	}
 }
 

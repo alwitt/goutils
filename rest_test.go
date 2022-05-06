@@ -1,9 +1,16 @@
 package goutils
 
 import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/apex/log"
 	"github.com/google/uuid"
@@ -19,6 +26,9 @@ func TestRestAPIHanderRequestIDInjection(t *testing.T) {
 	uutNoUserRequestIDHeader := RestAPIHandler{
 		Component: Component{
 			LogTags: log.Fields{"entity": "unit-tester"},
+			LogTagModifiers: []LogMetadataModifier{
+				ModifyLogMetadataByRestRequestParam,
+			},
 		},
 		CallRequestIDHeaderField: nil,
 	}
@@ -52,6 +62,9 @@ func TestRestAPIHanderRequestIDInjection(t *testing.T) {
 	uutWithUserRequestIDHeader := RestAPIHandler{
 		Component: Component{
 			LogTags: log.Fields{"entity": "unit-tester"},
+			LogTagModifiers: []LogMetadataModifier{
+				ModifyLogMetadataByRestRequestParam,
+			},
 		},
 		CallRequestIDHeaderField: &testReqIDHeader,
 	}
@@ -88,6 +101,9 @@ func TestRestAPIHandlerRequestLogging(t *testing.T) {
 	uut := RestAPIHandler{
 		Component: Component{
 			LogTags: log.Fields{"entity": "unit-tester"},
+			LogTagModifiers: []LogMetadataModifier{
+				ModifyLogMetadataByRestRequestParam,
+			},
 		},
 		DoNotLogHeaders: map[string]bool{"Not-Allowed": true},
 	}
@@ -117,4 +133,141 @@ func TestRestAPIHandlerRequestLogging(t *testing.T) {
 
 		assert.Equal(http.StatusOK, respRecorder.Code)
 	}
+}
+
+func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	uut := RestAPIHandler{
+		Component: Component{
+			LogTags: log.Fields{"entity": "unit-tester"},
+			LogTagModifiers: []LogMetadataModifier{
+				ModifyLogMetadataByRestRequestParam,
+			},
+		},
+	}
+
+	type testMessage struct {
+		Timestamp time.Time
+		Msg       string
+	}
+
+	testMsgTX := make(chan testMessage, 1)
+	testMsgRX := make(chan testMessage, 1)
+
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+	utCtxt, ctxtCancel := context.WithCancel(context.Background())
+	defer ctxtCancel()
+
+	// Define streaming data handler
+	testHandler := func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		assert.True(ok)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		log.Debug("Starting stream response handler")
+		complete := false
+		for !complete {
+			select {
+			case <-utCtxt.Done():
+				complete = true
+			case msg, ok := <-testMsgTX:
+				assert.True(ok)
+				t, err := json.Marshal(&msg)
+				assert.Nil(err)
+				fmt.Fprintf(w, "%s\n", t)
+				flusher.Flush()
+				log.Debugf("Sent %s\n", t)
+			}
+		}
+		log.Debug("Stoping stream response handler")
+	}
+
+	router := mux.NewRouter()
+	router.HandleFunc("/testing", uut.LoggingMiddleware(testHandler))
+
+	// Define HTTP server
+	rand.Seed(time.Now().UnixNano())
+	testServerPort := rand.Intn(30000) + 32769
+	testServerListen := fmt.Sprintf("127.0.0.1:%d", testServerPort)
+	testServer := &http.Server{
+		Addr:    testServerListen,
+		Handler: router,
+	}
+	// Start the HTTP server
+	log.Debugf("Starting test server on %s", testServerListen)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := testServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			assert.Nil(err)
+		}
+		log.Debugf("Stopped test server on %s", testServerListen)
+	}()
+	defer func() {
+		// Helper function to shutdown the server
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		if err := testServer.Shutdown(ctx); err != nil {
+			assert.Nil(err)
+		}
+	}()
+
+	// Define test HTTP client
+	testClient := http.Client{}
+
+	// Make the request in another thread
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var resp *http.Response
+		var err error
+		for i := 0; i < 3; i++ {
+			log.Debug("Connecting to test server")
+			resp, err = testClient.Get(fmt.Sprintf("http://%s/testing", testServerListen))
+			if err == nil {
+				break
+			}
+			time.Sleep(time.Millisecond * 25)
+		}
+		log.Debugf("Connected to test server http://%s/testing", testServerListen)
+		assert.Nil(err)
+		assert.Equal(http.StatusOK, resp.StatusCode)
+		// Process the resp stream
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Split(bufio.ScanLines)
+		log.Debug("Scanning SSE stream")
+		for scanner.Scan() {
+			received := scanner.Text()
+			log.Debugf("Received: %s", received)
+			var parsed testMessage
+			assert.Nil(json.Unmarshal([]byte(received), &parsed))
+			testMsgRX <- parsed
+		}
+		log.Debug("Stopped scanner")
+	}()
+
+	// Send message multiple times
+	for i := 0; i < 4; i++ {
+		newMsg := testMessage{Timestamp: time.Now(), Msg: uuid.New().String()}
+		testMsgTX <- newMsg
+		ctxt, lclCancel := context.WithTimeout(utCtxt, time.Millisecond*100)
+		defer lclCancel()
+		select {
+		case <-ctxt.Done():
+			assert.Nil(ctxt.Err())
+		case rx, ok := <-testMsgRX:
+			assert.True(ok)
+			assert.Equal(newMsg.Timestamp.Unix(), rx.Timestamp.Unix())
+			assert.Equal(newMsg.Msg, rx.Msg)
+		}
+	}
+
+	// Allow for clean shutdown
+	ctxtCancel()
 }
