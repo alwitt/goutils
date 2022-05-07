@@ -121,8 +121,13 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 	}
 }
 
-// readRequestIDFromContext reads the request ID from the request context if available
-func (h RestAPIHandler) readRequestIDFromContext(ctxt context.Context) string {
+/*
+ReadRequestIDFromContext reads the request ID from the request context if available
+
+ @param ctxt context.Context - a request context
+ @return if available, the request ID
+*/
+func (h RestAPIHandler) ReadRequestIDFromContext(ctxt context.Context) string {
 	if ctxt.Value(RestRequestParamKey{}) != nil {
 		v, ok := ctxt.Value(RestRequestParamKey{}).(RestRequestParam)
 		if ok {
@@ -139,7 +144,7 @@ GetStdRESTSuccessMsg defines a standard success message
  @return the standard REST response
 */
 func (h RestAPIHandler) GetStdRESTSuccessMsg(ctxt context.Context) RestAPIBaseResponse {
-	return RestAPIBaseResponse{Success: true, RequestID: h.readRequestIDFromContext(ctxt)}
+	return RestAPIBaseResponse{Success: true, RequestID: h.ReadRequestIDFromContext(ctxt)}
 }
 
 /*
@@ -156,7 +161,7 @@ func (h RestAPIHandler) GetStdRESTErrorMsg(
 ) RestAPIBaseResponse {
 	return RestAPIBaseResponse{
 		Success:   false,
-		RequestID: h.readRequestIDFromContext(ctxt),
+		RequestID: h.ReadRequestIDFromContext(ctxt),
 		Error:     &ErrorDetail{Code: respCode, Msg: errMsg, Detail: errDetail},
 	}
 }
