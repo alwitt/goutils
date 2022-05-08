@@ -90,10 +90,10 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 		ctxt := context.WithValue(r.Context(), RestRequestParamKey{}, params)
 		// Make the request
 		newRespWriter := negroni.NewResponseWriter(rw)
-		next(newRespWriter, r.WithContext(ctxt))
 		if h.CallRequestIDHeaderField != nil {
-			newRespWriter.Header().Set(*h.CallRequestIDHeaderField, reqID)
+			newRespWriter.Header().Add(*h.CallRequestIDHeaderField, reqID)
 		}
+		next(newRespWriter, r.WithContext(ctxt))
 		newRespWriter.Flush()
 		respTimestamp := time.Now()
 		// Log result of request

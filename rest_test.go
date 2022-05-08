@@ -139,6 +139,7 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)
 
+	testReqIDHeader := uuid.New().String()
 	uut := RestAPIHandler{
 		Component: Component{
 			LogTags: log.Fields{"entity": "unit-tester"},
@@ -146,6 +147,7 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 				ModifyLogMetadataByRestRequestParam,
 			},
 		},
+		CallRequestIDHeaderField: &testReqIDHeader,
 	}
 
 	type testMessage struct {
@@ -220,6 +222,10 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 
 	// Define test HTTP client
 	testClient := http.Client{}
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/testing", testServerListen), nil)
+	assert.Nil(err)
+	testRID := uuid.New().String()
+	req.Header.Add(testReqIDHeader, testRID)
 
 	// Make the request in another thread
 	wg.Add(1)
@@ -229,7 +235,7 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 		var err error
 		for i := 0; i < 3; i++ {
 			log.Debug("Connecting to test server")
-			resp, err = testClient.Get(fmt.Sprintf("http://%s/testing", testServerListen))
+			resp, err = testClient.Do(req)
 			if err == nil {
 				break
 			}
@@ -238,6 +244,7 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 		log.Debugf("Connected to test server http://%s/testing", testServerListen)
 		assert.Nil(err)
 		assert.Equal(http.StatusOK, resp.StatusCode)
+		assert.Equal(testRID, resp.Header.Get(testReqIDHeader))
 		// Process the resp stream
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Split(bufio.ScanLines)
