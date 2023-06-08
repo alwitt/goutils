@@ -44,8 +44,8 @@ type RestAPIBaseResponse struct {
 /*
 LoggingMiddleware is a support middleware to be used with Mux to perform request logging
 
- @param next http.HandlerFunc - the core request handler function
- @return middleware http.HandlerFunc
+	@param next http.HandlerFunc - the core request handler function
+	@return middleware http.HandlerFunc
 */
 func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
@@ -124,8 +124,8 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 /*
 ReadRequestIDFromContext reads the request ID from the request context if available
 
- @param ctxt context.Context - a request context
- @return if available, the request ID
+	@param ctxt context.Context - a request context
+	@return if available, the request ID
 */
 func (h RestAPIHandler) ReadRequestIDFromContext(ctxt context.Context) string {
 	if ctxt.Value(RestRequestParamKey{}) != nil {
@@ -140,8 +140,8 @@ func (h RestAPIHandler) ReadRequestIDFromContext(ctxt context.Context) string {
 /*
 GetStdRESTSuccessMsg defines a standard success message
 
- @param ctxt context.Context - a request context
- @return the standard REST response
+	@param ctxt context.Context - a request context
+	@return the standard REST response
 */
 func (h RestAPIHandler) GetStdRESTSuccessMsg(ctxt context.Context) RestAPIBaseResponse {
 	return RestAPIBaseResponse{Success: true, RequestID: h.ReadRequestIDFromContext(ctxt)}
@@ -150,11 +150,11 @@ func (h RestAPIHandler) GetStdRESTSuccessMsg(ctxt context.Context) RestAPIBaseRe
 /*
 GetStdRESTErrorMsg defines a standard error message
 
- @param ctxt context.Context - a request context
- @param respCode int - the request response code
- @param errMsg string - the error message
- @param errDetail string - the details on the error
- @return the standard REST response
+	@param ctxt context.Context - a request context
+	@param respCode int - the request response code
+	@param errMsg string - the error message
+	@param errDetail string - the details on the error
+	@return the standard REST response
 */
 func (h RestAPIHandler) GetStdRESTErrorMsg(
 	ctxt context.Context, respCode int, errMsg string, errDetail string,
@@ -169,11 +169,11 @@ func (h RestAPIHandler) GetStdRESTErrorMsg(
 /*
 WriteRESTResponse helper function to write out the REST API response
 
- @param w http.ResponseWriter - response writer
- @param respCode int - the response code
- @param resp interface{} - the response body
- @param headers map[string]string - the response header
- @return whether write succeeded
+	@param w http.ResponseWriter - response writer
+	@param respCode int - the response code
+	@param resp interface{} - the response body
+	@param headers map[string]string - the response header
+	@return whether write succeeded
 */
 func (h RestAPIHandler) WriteRESTResponse(
 	w http.ResponseWriter, respCode int, resp interface{}, headers map[string]string,

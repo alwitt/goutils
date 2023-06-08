@@ -75,11 +75,11 @@ type taskProcessorImpl struct {
 /*
 GetNewTaskProcessorInstance get single threaded implementation of TaskProcessor
 
- @param ctxt context.Context - parent context
- @param instanceName string - instance name
- @param taskBufferLen int - number of task-parameters to buffer
- @param logTags log.Fields - metadata fields to include in the logs
- @return new TaskProcessor instance
+	@param ctxt context.Context - parent context
+	@param instanceName string - instance name
+	@param taskBufferLen int - number of task-parameters to buffer
+	@param logTags log.Fields - metadata fields to include in the logs
+	@return new TaskProcessor instance
 */
 func GetNewTaskProcessorInstance(
 	ctxt context.Context, instanceName string, taskBufferLen int, logTags log.Fields,
@@ -98,9 +98,9 @@ func GetNewTaskProcessorInstance(
 /*
 Submit submits a new task parameter to be processed by a handler
 
- @param ctx context.Context - calling context
- @param newTaskParam interface{} - task-parameter
- @return whether successful
+	@param ctx context.Context - calling context
+	@param newTaskParam interface{} - task-parameter
+	@return whether successful
 */
 func (p *taskProcessorImpl) Submit(ctx context.Context, newTaskParam interface{}) error {
 	select {
@@ -121,9 +121,9 @@ The task-parameter object contains information need to execute a particular task
 a user wants to execute a task, the user is submitting a task-parameter object via Submit.
 The module finds the associated handler function and calls it with the task-parameter object.
 
- @param newMap map[reflect.Type]TaskHandler - map of task handlers to various task-parameter
- object types
- @return whether successful
+	@param newMap map[reflect.Type]TaskHandler - map of task handlers to various task-parameter
+	object types
+	@return whether successful
 */
 func (p *taskProcessorImpl) SetTaskExecutionMap(
 	newMap map[reflect.Type]TaskProcessorSupportHandler,
@@ -136,9 +136,9 @@ func (p *taskProcessorImpl) SetTaskExecutionMap(
 /*
 AddToTaskExecutionMap add new (task-parameter, handler function) mapping to the existing set.
 
- @param parameterType reflect.Type - task-parameter object type
- @param handler TaskHandler - task handler
- @return whether successful
+	@param parameterType reflect.Type - task-parameter object type
+	@param handler TaskHandler - task handler
+	@return whether successful
 */
 func (p *taskProcessorImpl) AddToTaskExecutionMap(theType reflect.Type, handler TaskProcessorSupportHandler) error {
 	log.WithFields(p.LogTags).Debugf("Appending to task execution mapping for %s", theType)
@@ -164,8 +164,8 @@ func (p *taskProcessorImpl) processNewTaskParam(newTaskParam interface{}) error 
 /*
 StartEventLoop starts the daemon thread for processing the submitted task-parameters
 
- @param wg *sync.WaitGroup - wait group
- @return whether successful
+	@param wg *sync.WaitGroup - wait group
+	@return whether successful
 */
 func (p *taskProcessorImpl) StartEventLoop(wg *sync.WaitGroup) error {
 	log.WithFields(p.LogTags).Info("Starting event loop")
@@ -197,7 +197,7 @@ func (p *taskProcessorImpl) StartEventLoop(wg *sync.WaitGroup) error {
 /*
 StopEventLoop stops the daemon thread
 
- @return whether successful
+	@return whether successful
 */
 func (p *taskProcessorImpl) StopEventLoop() error {
 	p.contextCancel()
@@ -220,12 +220,12 @@ type taskDemuxProcessorImpl struct {
 /*
 GetNewTaskDemuxProcessorInstance get multi-threaded implementation of TaskProcessor
 
- @param ctxt context.Context - parent context
- @param instanceName string - instance name
- @param taskBufferLen int - number of task-parameters to buffer
- @param workerNum int - number of supporting worker threads
- @param logTags log.Fields - metadata fields to include in the logs
- @return new TaskProcessor instance
+	@param ctxt context.Context - parent context
+	@param instanceName string - instance name
+	@param taskBufferLen int - number of task-parameters to buffer
+	@param workerNum int - number of supporting worker threads
+	@param logTags log.Fields - metadata fields to include in the logs
+	@return new TaskProcessor instance
 */
 func GetNewTaskDemuxProcessorInstance(
 	ctxt context.Context,
@@ -266,9 +266,9 @@ func GetNewTaskDemuxProcessorInstance(
 /*
 Submit submits a new task parameter to be processed by a handler
 
- @param ctx context.Context - calling context
- @param newTaskParam interface{} - task-parameter
- @return whether successful
+	@param ctx context.Context - calling context
+	@param newTaskParam interface{} - task-parameter
+	@return whether successful
 */
 func (p *taskDemuxProcessorImpl) Submit(ctx context.Context, newTaskParam interface{}) error {
 	return p.input.Submit(ctx, newTaskParam)
@@ -292,9 +292,9 @@ The task-parameter object contains information need to execute a particular task
 a user wants to execute a task, the user is submitting a task-parameter object via Submit.
 The module finds the associated handler function and calls it with the task-parameter object.
 
- @param newMap map[reflect.Type]TaskHandler - map of task handlers to various task-parameter
- object types
- @return whether successful
+	@param newMap map[reflect.Type]TaskHandler - map of task handlers to various task-parameter
+	object types
+	@return whether successful
 */
 func (p *taskDemuxProcessorImpl) SetTaskExecutionMap(newMap map[reflect.Type]TaskProcessorSupportHandler) error {
 	for _, worker := range p.workers {
@@ -311,9 +311,9 @@ func (p *taskDemuxProcessorImpl) SetTaskExecutionMap(newMap map[reflect.Type]Tas
 /*
 AddToTaskExecutionMap add new (task-parameter, handler function) mapping to the existing set.
 
- @param parameterType reflect.Type - task-parameter object type
- @param handler TaskHandler - task handler
- @return whether successful
+	@param parameterType reflect.Type - task-parameter object type
+	@param handler TaskHandler - task handler
+	@return whether successful
 */
 func (p *taskDemuxProcessorImpl) AddToTaskExecutionMap(
 	theType reflect.Type, handler TaskProcessorSupportHandler,
@@ -328,8 +328,8 @@ func (p *taskDemuxProcessorImpl) AddToTaskExecutionMap(
 /*
 StartEventLoop starts the daemon thread for processing the submitted task-parameters
 
- @param wg *sync.WaitGroup - wait group
- @return whether successful
+	@param wg *sync.WaitGroup - wait group
+	@return whether successful
 */
 func (p *taskDemuxProcessorImpl) StartEventLoop(wg *sync.WaitGroup) error {
 	log.WithFields(p.LogTags).Info("Starting event loops")
@@ -344,7 +344,7 @@ func (p *taskDemuxProcessorImpl) StartEventLoop(wg *sync.WaitGroup) error {
 /*
 StopEventLoop stops the daemon thread
 
- @return whether successful
+	@return whether successful
 */
 func (p *taskDemuxProcessorImpl) StopEventLoop() error {
 	p.contextCancel()

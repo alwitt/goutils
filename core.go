@@ -26,7 +26,7 @@ type Component struct {
 /*
 NewLogTagsForContext generates a new deep-copied LogTags for an execution context
 
- @return a new log.Fields
+	@return a new log.Fields
 */
 func (c Component) NewLogTagsForContext() log.Fields {
 	result := log.Fields{}
@@ -43,8 +43,8 @@ func (c Component) NewLogTagsForContext() log.Fields {
 /*
 GetLogTagsForContext creates a new Apex log.Fields metadata structure for a specific context
 
- @param ctxt context.Context - a request context
- @return the new Apec log.Fields metadata
+	@param ctxt context.Context - a request context
+	@return the new Apec log.Fields metadata
 */
 func (c Component) GetLogTagsForContext(ctxt context.Context) log.Fields {
 	theTags := c.NewLogTagsForContext()
@@ -105,8 +105,8 @@ func (i *RestRequestParam) updateLogTags(tags log.Fields) {
 /*
 ModifyLogMetadataByRestRequestParam update log metadata with info from RestRequestParam
 
- @param ctxt context.Context - a request context
- @param theTags log.Fields - a log metadata to update
+	@param ctxt context.Context - a request context
+	@param theTags log.Fields - a log metadata to update
 */
 func ModifyLogMetadataByRestRequestParam(ctxt context.Context, theTags log.Fields) {
 	if ctxt.Value(RestRequestParamKey{}) != nil {

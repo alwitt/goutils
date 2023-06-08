@@ -43,11 +43,11 @@ type intervalTimerImpl struct {
 /*
 GetIntervalTimerInstance get an implementation instance of IntervalTimer
 
- @param rootCtxt context.Context - the base Context the timer will derive new runtime context from
-   each time Start is called.
- @param wg *sync.WaitGroup - WaitGroup use by timer
- @param logTags log.Fields - log metadata fields
- @return an IntervalTimer instance
+	@param rootCtxt context.Context - the base Context the timer will derive new runtime context from
+	  each time Start is called.
+	@param wg *sync.WaitGroup - WaitGroup use by timer
+	@param logTags log.Fields - log metadata fields
+	@return an IntervalTimer instance
 */
 func GetIntervalTimerInstance(
 	rootCtxt context.Context, wg *sync.WaitGroup, logTags log.Fields,
@@ -67,8 +67,8 @@ Start starts timer with a specific timeout interval, and the callback to trigger
 
 If oneShort, cancel after first timeout.
 
- @param interval time.Duration - timeout interval
- @param handler TimeoutHandler - handler to trigger on timeout
+	@param interval time.Duration - timeout interval
+	@param handler TimeoutHandler - handler to trigger on timeout
 */
 func (t *intervalTimerImpl) Start(
 	interval time.Duration, handler TimeoutHandler, oneShot bool,
@@ -147,9 +147,9 @@ func (s *exponentialSequence) NextValue() float64 {
 /*
 GetExponentialSeq define an exponential sequencer
 
- @param initial float64 - initial value
- @param growthRate float64 - EXP change rate
- @return an Sequencer instance
+	@param initial float64 - initial value
+	@param growthRate float64 - EXP change rate
+	@return an Sequencer instance
 */
 func GetExponentialSeq(initial float64, growthRate float64) (Sequencer, error) {
 	if growthRate < 1.0 {

@@ -194,7 +194,6 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 	router.HandleFunc("/testing", uut.LoggingMiddleware(testHandler))
 
 	// Define HTTP server
-	rand.Seed(time.Now().UnixNano())
 	testServerPort := rand.Intn(30000) + 32769
 	testServerListen := fmt.Sprintf("127.0.0.1:%d", testServerPort)
 	testServer := &http.Server{
