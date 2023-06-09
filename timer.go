@@ -21,6 +21,7 @@ type IntervalTimer interface {
 
 		 @param interval time.Duration - timeout interval
 		 @param handler TimeoutHandler - handler to trigger on timeout
+		 @param oneShort bool - if true, timer stop after first activation
 	*/
 	Start(interval time.Duration, handler TimeoutHandler, oneShort bool) error
 
@@ -69,6 +70,7 @@ If oneShort, cancel after first timeout.
 
 	@param interval time.Duration - timeout interval
 	@param handler TimeoutHandler - handler to trigger on timeout
+	@param oneShort bool - if true, timer stop after first activation
 */
 func (t *intervalTimerImpl) Start(
 	interval time.Duration, handler TimeoutHandler, oneShot bool,
