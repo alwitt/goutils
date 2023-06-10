@@ -13,7 +13,7 @@ fix: .prepare ## Lint and fix vialoations
 
 .PHONY: test
 test: .prepare ## Run unittests
-	@go test --count 1 -timeout 30s -short ./...
+	@go test --count 1 -timeout 60s -short ./...
 
 .prepare: ## Prepare the project for local development
 	@pip3 install --user pre-commit

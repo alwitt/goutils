@@ -15,7 +15,7 @@ repos:
       # - id: gometalinter
       - id: golangci-lint
       # - id: go-critic
-      - id: go-unit-tests
+      # - id: go-unit-tests
       # - id: go-build
       - id: go-mod-tidy
   - repo: https://github.com/pre-commit/pre-commit-hooks

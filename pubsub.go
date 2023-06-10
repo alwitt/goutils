@@ -75,11 +75,12 @@ type PubSubClient interface {
 		CreateSubscription create PubSub subscription to attach to topic
 
 		 @param ctxt context.Context - execution context
+		 @param targetTopic string - target topic
 		 @param subscription string - subscription name
 		 @param config pubsub.SubscriptionConfig - subscription config
 	*/
 	CreateSubscription(
-		ctxt context.Context, subscription string, config pubsub.SubscriptionConfig,
+		ctxt context.Context, targetTopic, subscription string, config pubsub.SubscriptionConfig,
 	) error
 
 	/*
@@ -371,32 +372,57 @@ func (p *pubsubClientImpl) UpdateTopic(
 CreateSubscription create PubSub subscription to attach to topic
 
 	@param ctxt context.Context - execution context
+	@param targetTopic string - target topic
 	@param subscription string - subscription name
 	@param config pubsub.SubscriptionConfig - subscription config
 */
 func (p *pubsubClientImpl) CreateSubscription(
-	ctxt context.Context, subscription string, config pubsub.SubscriptionConfig,
+	ctxt context.Context, targetTopic, subscription string, config pubsub.SubscriptionConfig,
 ) error {
-	p.subLock.Lock()
-	defer p.subLock.Unlock()
-
 	logTag := p.GetLogTagsForContext(ctxt)
 
-	// If this instance has created this topic before
-	if _, ok := p.subscriptions[subscription]; ok {
-		log.WithFields(logTag).Infof("Subscription '%s' already exist", subscription)
-		return nil
+	var topic *pubsub.Topic
+
+	// Grab the topic object
+	{
+		p.topicLock.Lock()
+		defer p.topicLock.Unlock()
+
+		t, ok := p.topics[targetTopic]
+		if !ok {
+			err := fmt.Errorf("topic '%s' is unknown", targetTopic)
+			log.
+				WithError(err).
+				WithFields(logTag).
+				Errorf("Unable to create subscription '%s'", subscription)
+			return err
+		}
+
+		topic = t
 	}
 
-	log.WithFields(logTag).Debugf("Creating subscription '%s'", subscription)
-	subHandle, err := p.client.CreateSubscription(ctxt, subscription, config)
-	if err != nil {
-		log.WithError(err).WithFields(logTag).Errorf("Unable to create subscription '%s'", subscription)
-		return err
-	}
-	log.WithFields(logTag).Infof("Created subscription '%s'", subscription)
+	// Create the subscription
+	config.Topic = topic
+	{
+		p.subLock.Lock()
+		defer p.subLock.Unlock()
 
-	p.subscriptions[subscription] = subHandle
+		// If this instance has created this topic before
+		if _, ok := p.subscriptions[subscription]; ok {
+			log.WithFields(logTag).Infof("Subscription '%s' already exist", subscription)
+			return nil
+		}
+
+		log.WithFields(logTag).Debugf("Creating subscription '%s'", subscription)
+		subHandle, err := p.client.CreateSubscription(ctxt, subscription, config)
+		if err != nil {
+			log.WithError(err).WithFields(logTag).Errorf("Unable to create subscription '%s'", subscription)
+			return err
+		}
+		log.WithFields(logTag).Infof("Created subscription '%s'", subscription)
+
+		p.subscriptions[subscription] = subHandle
+	}
 
 	return nil
 }

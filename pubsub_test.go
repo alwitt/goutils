@@ -125,3 +125,88 @@ func TestTopicSync(t *testing.T) {
 	// Clean up
 	assert.Nil(uut0.DeleteTopic(utCtxt, topic0))
 }
+
+func TestSubscriptionCRUD(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtxt := context.Background()
+
+	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
+	assert.NotEqual("", testGCPProjectID)
+
+	coreClient, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	assert.Nil(err)
+
+	uut, err := GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
+	assert.Nil(err)
+
+	assert.Nil(uut.SyncWithExisting(utCtxt))
+
+	// Case 0: unknown subscription
+	{
+		_, err := uut.GetSubscription(utCtxt, uuid.NewString())
+		assert.NotNil(err)
+	}
+
+	// Create test topic
+	testTopic := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	{
+		topicConfig := pubsub.TopicConfig{RetentionDuration: time.Minute * 10}
+		assert.Nil(uut.CreateTopic(utCtxt, testTopic, &topicConfig))
+	}
+
+	// Case 1: create subscription
+	subscribe0 := fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString())
+	{
+		assert.Nil(uut.CreateSubscription(utCtxt, testTopic, subscribe0, pubsub.SubscriptionConfig{
+			AckDeadline:       time.Second * 60,
+			RetentionDuration: time.Hour * 4,
+		}))
+	}
+	{
+		config, err := uut.GetSubscription(utCtxt, subscribe0)
+		assert.Nil(err)
+		assert.Equal(testTopic, config.Topic.ID())
+		assert.Equal(subscribe0, config.ID())
+		assert.Equal(time.Second*60, config.AckDeadline)
+		assert.Equal(time.Hour*4, config.RetentionDuration)
+	}
+
+	// Case 2: create subscription against unknown topic
+	{
+		assert.NotNil(uut.CreateSubscription(
+			utCtxt,
+			uuid.NewString(),
+			fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString()),
+			pubsub.SubscriptionConfig{},
+		))
+	}
+
+	// Case 3: create using the same parameters
+	{
+		assert.Nil(uut.CreateSubscription(utCtxt, testTopic, subscribe0, pubsub.SubscriptionConfig{
+			AckDeadline:       time.Second * 60,
+			RetentionDuration: time.Hour * 4,
+		}))
+	}
+
+	// Case 4: update subscription config
+	{
+		assert.Nil(uut.UpdateSubscription(utCtxt, subscribe0, pubsub.SubscriptionConfigToUpdate{
+			RetentionDuration: time.Hour * 72,
+		}))
+	}
+	{
+		config, err := uut.GetSubscription(utCtxt, subscribe0)
+		assert.Nil(err)
+		assert.Equal(testTopic, config.Topic.ID())
+		assert.Equal(subscribe0, config.ID())
+		assert.Equal(time.Second*60, config.AckDeadline)
+		assert.Equal(time.Hour*72, config.RetentionDuration)
+	}
+
+	// Clean up
+	assert.Nil(uut.DeleteSubscription(utCtxt, subscribe0))
+	assert.Nil(uut.DeleteTopic(utCtxt, testTopic))
+}
