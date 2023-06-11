@@ -399,3 +399,114 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 	assert.Nil(uut0.DeleteSubscription(utCtxt, testSubscription))
 	assert.Nil(uut0.DeleteTopic(utCtxt, testTopic))
 }
+
+func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtxt := context.Background()
+
+	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
+	assert.NotEqual("", testGCPProjectID)
+
+	coreClient, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	assert.Nil(err)
+
+	uut, err := GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
+	assert.Nil(err)
+
+	assert.Nil(uut.SyncWithExisting(utCtxt))
+
+	// Create test topic
+	testTopic := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	assert.Nil(uut.CreateTopic(
+		utCtxt, testTopic, &pubsub.TopicConfig{RetentionDuration: time.Minute * 10},
+	))
+
+	// Create subscription
+	testSubscription0 := fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString())
+	assert.Nil(uut.CreateSubscription(utCtxt, testTopic, testSubscription0, pubsub.SubscriptionConfig{
+		AckDeadline:       time.Second * 10,
+		RetentionDuration: time.Minute * 10,
+	}))
+	testSubscription1 := fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString())
+	assert.Nil(uut.CreateSubscription(utCtxt, testTopic, testSubscription1, pubsub.SubscriptionConfig{
+		AckDeadline:       time.Second * 10,
+		RetentionDuration: time.Minute * 10,
+	}))
+
+	type msgWrap struct {
+		rxIdx int
+		msg   []byte
+	}
+
+	// Support for receiving messages
+	rxMsg := make(chan msgWrap)
+	receiveMsg0 := func(ctxt context.Context, msg []byte) error {
+		rxMsg <- msgWrap{rxIdx: 0, msg: msg}
+		return nil
+	}
+	receiveMsg1 := func(ctxt context.Context, msg []byte) error {
+		rxMsg <- msgWrap{rxIdx: 1, msg: msg}
+		return nil
+	}
+
+	// Start receiving on subscription
+	log.Debug("Starting message subscription receive")
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	rxCtxt, rxCancel := context.WithCancel(utCtxt)
+	receiver := func(
+		idx int, subscription string, handler func(ctxt context.Context, msg []byte) error,
+	) {
+		defer wg.Done()
+		log.Debugf("Start MSG Receiver %d", idx)
+		assert.Nil(uut.Subscribe(rxCtxt, subscription, handler))
+	}
+	go receiver(0, testSubscription0, receiveMsg0)
+	go receiver(1, testSubscription1, receiveMsg1)
+	log.Debug("Started message subscription receive")
+
+	// Send messages
+	log.Debug("Publishing test messages")
+	testMsgs := map[string]bool{}
+	for itr := 0; itr < 3; itr++ {
+		msg := uuid.NewString()
+		_, err := uut.Publish(utCtxt, testTopic, []byte(msg), true)
+		assert.Nil(err)
+		testMsgs[msg] = true
+	}
+	log.Debug("Published test messages")
+
+	// Wait for message to come back
+	{
+		lclCtxt, cancel := context.WithTimeout(utCtxt, time.Second*5)
+		defer cancel()
+
+		perSubRXMsgs := map[int]map[string]bool{}
+
+		for itr := 0; itr < 6; itr++ {
+			select {
+			case <-lclCtxt.Done():
+				assert.False(true, "PubSub receive timeout")
+			case msg, ok := <-rxMsg:
+				assert.True(ok)
+				if _, ok := perSubRXMsgs[msg.rxIdx]; !ok {
+					perSubRXMsgs[msg.rxIdx] = make(map[string]bool)
+				}
+				perSubRXMsgs[msg.rxIdx][string(msg.msg)] = true
+			}
+		}
+
+		assert.Len(perSubRXMsgs, 2)
+		assert.EqualValues(testMsgs, perSubRXMsgs[0])
+		assert.EqualValues(testMsgs, perSubRXMsgs[1])
+	}
+
+	// Clean up
+	rxCancel()
+	wg.Wait()
+	assert.Nil(uut.DeleteSubscription(utCtxt, testSubscription0))
+	assert.Nil(uut.DeleteSubscription(utCtxt, testSubscription1))
+	assert.Nil(uut.DeleteTopic(utCtxt, testTopic))
+}
