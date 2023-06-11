@@ -5,11 +5,13 @@ stages:
 
 cicd:
   stage: test
+  variables:
+    UNITTEST_GCP_PROJECT_ID: cicd
+    GOOGLE_APPLICATION_CREDENTIALS: ./cicd/gcp_cred_cfg.json
   id_tokens:
     GITLAB_OIDC_TOKEN:
       aud: https://iam.googleapis.com/projects/762069519666/locations/global/workloadIdentityPools/cicd-workflow/providers/gitlab
   script:
-    - ./scripts/call_gcp_sts.sh
     - go fmt $(go list ./...)
     - go vet $(go list ./...)
     - go test ./...
