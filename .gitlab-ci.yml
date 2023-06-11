@@ -1,4 +1,4 @@
-image: golang:1.20.1
+image: alwitt/go-utils-cicd:0.1.0
 
 stages:
   - test
@@ -7,10 +7,11 @@ cicd:
   stage: test
   variables:
     UNITTEST_GCP_PROJECT_ID: cicd-389504
-    GOOGLE_APPLICATION_CREDENTIALS: .secure_files/gcp-cicd-pubsub-sa-creds.json
+    # GOOGLE_APPLICATION_CREDENTIALS: .secure_files/gcp-cicd-pubsub-sa-creds.json
     GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES: "1"
   script:
     - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+    - ./scripts/call_gcp_sts.sh
     - go fmt $(go list ./...)
     - go vet $(go list ./...)
     - go test ./...
