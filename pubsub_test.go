@@ -12,7 +12,22 @@ import (
 	"github.com/apex/log"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/api/option"
 )
+
+func createPubSubClientUsingAPIToken(ctxt context.Context, projectID string, token string) (*pubsub.Client, error) {
+	return pubsub.NewClient(ctxt, projectID, option.WithAPIKey(token))
+}
+
+func createTestPubSubClient(ctxt context.Context) (*pubsub.Client, error) {
+	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
+
+	testToken := os.Getenv("UNITTEST_GCP_API_TOKEN")
+	if testToken != "" {
+		return createPubSubClientUsingAPIToken(ctxt, testGCPProjectID, testToken)
+	}
+	return CreateBasicGCPPubSubClient(ctxt, testGCPProjectID)
+}
 
 func TestPubSubTopicCRUD(t *testing.T) {
 	assert := assert.New(t)
@@ -20,10 +35,7 @@ func TestPubSubTopicCRUD(t *testing.T) {
 
 	utCtxt := context.Background()
 
-	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
-	assert.NotEqual("", testGCPProjectID)
-
-	coreClient, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
 	uut, err := GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
@@ -90,13 +102,10 @@ func TestPubSubTopicSync(t *testing.T) {
 
 	utCtxt := context.Background()
 
-	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
-	assert.NotEqual("", testGCPProjectID)
-
-	coreClient0, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	coreClient0, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
-	coreClient1, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	coreClient1, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
 	uut0, err := GetNewPubSubClientInstance(coreClient0, log.Fields{"instance": "unit-tester-0"})
@@ -130,10 +139,7 @@ func TestPubSubSubscriptionCRUD(t *testing.T) {
 
 	utCtxt := context.Background()
 
-	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
-	assert.NotEqual("", testGCPProjectID)
-
-	coreClient, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
 	uut, err := GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
@@ -206,10 +212,7 @@ func TestPubSubDataPassing(t *testing.T) {
 
 	utCtxt := context.Background()
 
-	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
-	assert.NotEqual("", testGCPProjectID)
-
-	coreClient, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
 	uut, err := GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
@@ -291,10 +294,7 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 
 	utCtxt := context.Background()
 
-	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
-	assert.NotEqual("", testGCPProjectID)
-
-	coreClient, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
 	uut0, err := GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-0"})
@@ -407,10 +407,7 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 
 	utCtxt := context.Background()
 
-	testGCPProjectID := os.Getenv("UNITTEST_GCP_PROJECT_ID")
-	assert.NotEqual("", testGCPProjectID)
-
-	coreClient, err := CreateBasicGCPPubSubClient(utCtxt, testGCPProjectID)
+	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
 	uut, err := GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})

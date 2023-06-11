@@ -27,3 +27,5 @@ ACCESS_TOKEN="$(curl --fail "https://iamcredentials.googleapis.com/v1/projects/-
   | jq -r '.accessToken'
 )"
 echo "${ACCESS_TOKEN}"
+
+export UNITTEST_GCP_API_TOKEN="${ACCESS_TOKEN}"

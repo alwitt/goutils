@@ -7,7 +7,6 @@ cicd:
   stage: test
   variables:
     UNITTEST_GCP_PROJECT_ID: cicd
-    GOOGLE_APPLICATION_CREDENTIALS: ./cicd/gcp_cred_cfg.json
     GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES: "1"
   id_tokens:
     GITLAB_OIDC_TOKEN:
