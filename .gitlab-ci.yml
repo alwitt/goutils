@@ -6,7 +6,7 @@ stages:
 cicd:
   stage: test
   variables:
-    UNITTEST_GCP_PROJECT_ID: cicd
+    UNITTEST_GCP_PROJECT_ID: cicd-389504
     GOOGLE_APPLICATION_CREDENTIALS: .secure_files/gcp-cicd-pubsub-sa-creds.json
     GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES: "1"
   script:
