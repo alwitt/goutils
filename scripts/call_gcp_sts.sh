@@ -23,7 +23,7 @@ ACCESS_TOKEN="$(curl --fail "https://iamcredentials.googleapis.com/v1/projects/-
   --header "Accept: application/json" \
   --header "Content-Type: application/json" \
   --header "Authorization: Bearer ${FEDERATED_TOKEN}" \
-  --data '{"scope": ["https://www.googleapis.com/auth/cloud-platform"]}' \
+  --data '{"scope": ["https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/pubsub"]}' \
   | jq -r '.accessToken'
 )"
 echo "${ACCESS_TOKEN}"
