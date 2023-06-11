@@ -38,7 +38,7 @@ func TestPubSubTopicCRUD(t *testing.T) {
 	}
 
 	// Case 1: create new topic
-	topic0 := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	topic0 := fmt.Sprintf("goutil-ut-topic-0-%s", uuid.NewString())
 	assert.Nil(uut.CreateTopic(
 		utCtxt, topic0, &pubsub.TopicConfig{RetentionDuration: time.Minute * 10},
 	))
@@ -64,7 +64,7 @@ func TestPubSubTopicCRUD(t *testing.T) {
 	}
 
 	// Case 4: create another topic
-	topic1 := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	topic1 := fmt.Sprintf("goutil-ut-topic-0-%s", uuid.NewString())
 	assert.Nil(uut.CreateTopic(
 		utCtxt, topic1, &pubsub.TopicConfig{RetentionDuration: time.Minute * 15},
 	))
@@ -81,6 +81,7 @@ func TestPubSubTopicCRUD(t *testing.T) {
 
 	// Clean up
 	assert.Nil(uut.DeleteTopic(utCtxt, topic0))
+	assert.Nil(uut.DeleteTopic(utCtxt, topic1))
 }
 
 func TestPubSubTopicSync(t *testing.T) {
@@ -105,7 +106,7 @@ func TestPubSubTopicSync(t *testing.T) {
 	assert.Nil(err)
 
 	// Create new topic
-	topic0 := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	topic0 := fmt.Sprintf("goutil-ut-topic-1-%s", uuid.NewString())
 	assert.Nil(uut0.CreateTopic(
 		utCtxt, topic0, &pubsub.TopicConfig{RetentionDuration: time.Minute * 33},
 	))
@@ -147,13 +148,13 @@ func TestPubSubSubscriptionCRUD(t *testing.T) {
 	}
 
 	// Create test topic
-	testTopic := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	testTopic := fmt.Sprintf("goutil-ut-topic-2-%s", uuid.NewString())
 	assert.Nil(uut.CreateTopic(
 		utCtxt, testTopic, &pubsub.TopicConfig{RetentionDuration: time.Minute * 10},
 	))
 
 	// Case 1: create subscription
-	subscribe0 := fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString())
+	subscribe0 := fmt.Sprintf("goutil-ut-sub-2-%s", uuid.NewString())
 	assert.Nil(uut.CreateSubscription(utCtxt, testTopic, subscribe0, pubsub.SubscriptionConfig{
 		AckDeadline:       time.Second * 60,
 		RetentionDuration: time.Hour * 4,
@@ -171,7 +172,7 @@ func TestPubSubSubscriptionCRUD(t *testing.T) {
 	assert.NotNil(uut.CreateSubscription(
 		utCtxt,
 		uuid.NewString(),
-		fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString()),
+		fmt.Sprintf("goutil-ut-sub-2-%s", uuid.NewString()),
 		pubsub.SubscriptionConfig{},
 	))
 
@@ -217,13 +218,13 @@ func TestPubSubDataPassing(t *testing.T) {
 	assert.Nil(uut.SyncWithExisting(utCtxt))
 
 	// Create test topic
-	testTopic := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	testTopic := fmt.Sprintf("goutil-ut-topic-3-%s", uuid.NewString())
 	assert.Nil(uut.CreateTopic(
 		utCtxt, testTopic, &pubsub.TopicConfig{RetentionDuration: time.Minute * 10},
 	))
 
 	// Create subscription
-	testSubscription := fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString())
+	testSubscription := fmt.Sprintf("goutil-ut-sub-3-%s", uuid.NewString())
 	assert.Nil(uut.CreateSubscription(utCtxt, testTopic, testSubscription, pubsub.SubscriptionConfig{
 		AckDeadline:       time.Second * 10,
 		RetentionDuration: time.Minute * 10,
@@ -302,13 +303,13 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 	assert.Nil(uut0.SyncWithExisting(utCtxt))
 
 	// Create test topic
-	testTopic := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	testTopic := fmt.Sprintf("goutil-ut-topic-4-%s", uuid.NewString())
 	assert.Nil(uut0.CreateTopic(
 		utCtxt, testTopic, &pubsub.TopicConfig{RetentionDuration: time.Minute * 10},
 	))
 
 	// Create subscription
-	testSubscription := fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString())
+	testSubscription := fmt.Sprintf("goutil-ut-sub-4-%s", uuid.NewString())
 	assert.Nil(uut0.CreateSubscription(utCtxt, testTopic, testSubscription, pubsub.SubscriptionConfig{
 		AckDeadline:       time.Second * 10,
 		RetentionDuration: time.Minute * 10,
@@ -418,18 +419,18 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 	assert.Nil(uut.SyncWithExisting(utCtxt))
 
 	// Create test topic
-	testTopic := fmt.Sprintf("goutil-ut-topic-%s", uuid.NewString())
+	testTopic := fmt.Sprintf("goutil-ut-topic-5-%s", uuid.NewString())
 	assert.Nil(uut.CreateTopic(
 		utCtxt, testTopic, &pubsub.TopicConfig{RetentionDuration: time.Minute * 10},
 	))
 
 	// Create subscription
-	testSubscription0 := fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString())
+	testSubscription0 := fmt.Sprintf("goutil-ut-sub-5-%s", uuid.NewString())
 	assert.Nil(uut.CreateSubscription(utCtxt, testTopic, testSubscription0, pubsub.SubscriptionConfig{
 		AckDeadline:       time.Second * 10,
 		RetentionDuration: time.Minute * 10,
 	}))
-	testSubscription1 := fmt.Sprintf("goutil-ut-sub-%s", uuid.NewString())
+	testSubscription1 := fmt.Sprintf("goutil-ut-sub-5-%s", uuid.NewString())
 	assert.Nil(uut.CreateSubscription(utCtxt, testTopic, testSubscription1, pubsub.SubscriptionConfig{
 		AckDeadline:       time.Second * 10,
 		RetentionDuration: time.Minute * 10,
