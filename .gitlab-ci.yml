@@ -1,4 +1,4 @@
-image: golang:1.20.1
+image: alwitt/go-utils-cicd:0.1.0
 
 stages:
   - test
@@ -13,6 +13,7 @@ cicd:
     GITLAB_OIDC_TOKEN:
       aud: https://iam.googleapis.com/projects/762069519666/locations/global/workloadIdentityPools/cicd-workflow/providers/gitlab
   script:
+    - ./scripts/call_gcp_sts.sh
     - go fmt $(go list ./...)
     - go vet $(go list ./...)
     - go test ./...
