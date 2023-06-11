@@ -5,7 +5,11 @@ stages:
 
 cicd:
   stage: test
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://iam.googleapis.com/projects/762069519666/locations/global/workloadIdentityPools/cicd-workflow/providers/gitlab
   script:
+    - ./scripts/call_gcp_sts.sh
     - go fmt $(go list ./...)
     - go vet $(go list ./...)
     - go test ./...
