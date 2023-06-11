@@ -127,6 +127,8 @@ type PubSubClient interface {
 	/*
 		Subscribe subscribe for message on a subscription
 
+		This call is blocking.
+
 		 @param ctxt context.Context - execution context
 		 @param subscription string - subscription name
 		 @param handler PubSubMessageHandler - RX message callback
@@ -145,9 +147,9 @@ type PubSubClient interface {
 type pubsubClientImpl struct {
 	Component
 	client        *pubsub.Client
-	topicLock     sync.Locker
+	topicLock     sync.RWMutex
 	topics        map[string]*pubsub.Topic
-	subLock       sync.Locker
+	subLock       sync.RWMutex
 	subscriptions map[string]*pubsub.Subscription
 }
 
@@ -162,9 +164,9 @@ func GetNewPubSubClientInstance(client *pubsub.Client, logTags log.Fields) (PubS
 	return &pubsubClientImpl{
 		Component:     Component{LogTags: logTags},
 		client:        client,
-		topicLock:     &sync.Mutex{},
+		topicLock:     sync.RWMutex{},
 		topics:        make(map[string]*pubsub.Topic),
-		subLock:       &sync.Mutex{},
+		subLock:       sync.RWMutex{},
 		subscriptions: make(map[string]*pubsub.Subscription),
 	}, nil
 }
@@ -227,6 +229,18 @@ Close close and clean up the client
 	@param ctxt context.Context - execution context
 */
 func (p *pubsubClientImpl) Close(ctxt context.Context) error {
+	logTag := p.GetLogTagsForContext(ctxt)
+	{
+		// Stop all the topics
+		p.topicLock.Lock()
+		defer p.topicLock.Unlock()
+
+		for topicName, topic := range p.topics {
+			log.WithFields(logTag).Debugf("Stopping topic '%s'", topicName)
+			topic.Stop()
+			log.WithFields(logTag).Infof("Stopped topic '%s'", topicName)
+		}
+	}
 	return nil
 }
 
@@ -542,11 +556,45 @@ Publish publish a message to a topic
 func (p *pubsubClientImpl) Publish(
 	ctxt context.Context, topic string, message []byte, blocking bool,
 ) (*pubsub.PublishResult, error) {
-	return nil, nil
+	logTag := p.GetLogTagsForContext(ctxt)
+
+	// Get the topic handle
+	var topicHandle *pubsub.Topic
+	{
+		p.topicLock.RLock()
+		defer p.topicLock.RUnlock()
+
+		t, ok := p.topics[topic]
+		if !ok {
+			err := fmt.Errorf("topic '%s' is unknown", topic)
+			log.WithError(err).WithFields(logTag).Errorf("Publish on topic '%s' failed", topic)
+			return nil, err
+		}
+
+		topicHandle = t
+	}
+
+	log.WithFields(logTag).Debugf("Publishing message on topic '%s'", topic)
+	txHandle := topicHandle.Publish(ctxt, &pubsub.Message{Data: message})
+
+	if blocking {
+		// Wait for publish to finish
+		txID, err := txHandle.Get(ctxt)
+		if err != nil {
+			log.WithError(err).WithFields(logTag).Errorf("Publish on topic '%s' failed", topic)
+			return nil, err
+		}
+		log.WithFields(logTag).Debugf("Published message [%s] on topic '%s'", txID, topic)
+	} else {
+		log.WithFields(logTag).Debugf("Published message on topic '%s'", topic)
+	}
+	return txHandle, nil
 }
 
 /*
-Subscribe subscribe for message on a subscription
+Subscribe subscribe for message on a subscription.
+
+This call is blocking.
 
 	@param ctxt context.Context - execution context
 	@param subscription string - subscription name
@@ -555,5 +603,48 @@ Subscribe subscribe for message on a subscription
 func (p *pubsubClientImpl) Subscribe(
 	ctxt context.Context, subscription string, handler PubSubMessageHandler,
 ) error {
+	logTag := p.GetLogTagsForContext(ctxt)
+
+	// Get the subscription handle
+	var subscriptionHandle *pubsub.Subscription
+	{
+		p.subLock.RLock()
+		defer p.subLock.RUnlock()
+
+		s, ok := p.subscriptions[subscription]
+		if !ok {
+			err := fmt.Errorf("subscription '%s' is unknown", subscription)
+			log.
+				WithError(err).
+				WithFields(logTag).
+				Errorf("Listen on subscription '%s' failed", subscription)
+			return err
+		}
+
+		subscriptionHandle = s
+	}
+
+	// Install subscription receive
+	if err := subscriptionHandle.Receive(ctxt, func(ctx context.Context, m *pubsub.Message) {
+		if err := handler(ctx, m.Data); err != nil {
+			log.
+				WithError(err).
+				WithFields(logTag).
+				WithField("subscription", subscription).
+				Errorf("Failed to process message [%s]", m.ID)
+			m.Nack()
+		} else {
+			log.
+				WithError(err).
+				WithFields(logTag).
+				WithField("subscription", subscription).
+				Debugf("Processed message [%s]", m.ID)
+			m.Ack()
+		}
+	}); err != nil {
+		log.WithError(err).WithFields(logTag).Errorf("Listen on subscription '%s' failed", subscription)
+		return err
+	}
+
 	return nil
 }
