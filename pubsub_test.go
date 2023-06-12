@@ -234,9 +234,13 @@ func TestPubSubDataPassing(t *testing.T) {
 	}))
 
 	// support for receiving messages
-	rxMsg := make(chan []byte)
-	receiveMsg := func(ctxt context.Context, msg []byte) error {
-		rxMsg <- msg
+	type msgPkg struct {
+		msg  []byte
+		meta map[string]string
+	}
+	rxMsg := make(chan msgPkg)
+	receiveMsg := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+		rxMsg <- msgPkg{msg: msg, meta: meta}
 		return nil
 	}
 
@@ -253,12 +257,15 @@ func TestPubSubDataPassing(t *testing.T) {
 
 	// Send messages
 	log.Debug("Publishing test messages")
-	testMsgs := map[string]bool{}
+	testMsgs := map[string]map[string]string{}
 	for itr := 0; itr < 3; itr++ {
 		msg := uuid.NewString()
-		_, err := uut.Publish(utCtxt, testTopic, []byte(msg), true)
+		meta := map[string]string{
+			uuid.NewString(): uuid.NewString(), uuid.NewString(): uuid.NewString(),
+		}
+		_, err := uut.Publish(utCtxt, testTopic, []byte(msg), meta, true)
 		assert.Nil(err)
-		testMsgs[msg] = true
+		testMsgs[msg] = meta
 	}
 	log.Debug("Published test messages")
 
@@ -267,14 +274,14 @@ func TestPubSubDataPassing(t *testing.T) {
 		lclCtxt, cancel := context.WithTimeout(utCtxt, time.Second*5)
 		defer cancel()
 
-		processedMsgs := map[string]bool{}
+		processedMsgs := map[string]map[string]string{}
 		for itr := 0; itr < 3; itr++ {
 			select {
 			case <-lclCtxt.Done():
 				assert.False(true, "PubSub receive timeout")
 			case msg, ok := <-rxMsg:
 				assert.True(ok)
-				processedMsgs[string(msg)] = true
+				processedMsgs[string(msg.msg)] = msg.meta
 			}
 		}
 
@@ -323,16 +330,17 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 	type msgWrap struct {
 		rxIdx int
 		msg   []byte
+		meta  map[string]string
 	}
 
 	// Support for receiving messages
 	rxMsg := make(chan msgWrap)
-	receiveMsg0 := func(ctxt context.Context, msg []byte) error {
-		rxMsg <- msgWrap{rxIdx: 0, msg: msg}
+	receiveMsg0 := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+		rxMsg <- msgWrap{rxIdx: 0, msg: msg, meta: meta}
 		return nil
 	}
-	receiveMsg1 := func(ctxt context.Context, msg []byte) error {
-		rxMsg <- msgWrap{rxIdx: 1, msg: msg}
+	receiveMsg1 := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+		rxMsg <- msgWrap{rxIdx: 1, msg: msg, meta: meta}
 		return nil
 	}
 
@@ -342,7 +350,9 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 	wg.Add(2)
 	rxCtxt, rxCancel := context.WithCancel(utCtxt)
 	receiver := func(
-		idx int, client PubSubClient, handler func(ctxt context.Context, msg []byte) error,
+		idx int,
+		client PubSubClient,
+		handler func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error,
 	) {
 		defer wg.Done()
 		log.Debugf("Start MSG Receiver %d", idx)
@@ -354,12 +364,15 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 
 	// Send messages
 	log.Debug("Publishing test messages")
-	testMsgs := map[string]bool{}
+	testMsgs := map[string]map[string]string{}
 	for itr := 0; itr < 3; itr++ {
 		msg := uuid.NewString()
-		_, err := uut0.Publish(utCtxt, testTopic, []byte(msg), true)
+		meta := map[string]string{
+			uuid.NewString(): uuid.NewString(), uuid.NewString(): uuid.NewString(),
+		}
+		_, err := uut0.Publish(utCtxt, testTopic, []byte(msg), meta, true)
 		assert.Nil(err)
-		testMsgs[msg] = true
+		testMsgs[msg] = meta
 	}
 	log.Debug("Published test messages")
 
@@ -368,14 +381,14 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 		lclCtxt, cancel := context.WithTimeout(utCtxt, time.Second*5)
 		defer cancel()
 
-		processedMsgs := map[string]bool{}
+		processedMsgs := map[string]map[string]string{}
 		for itr := 0; itr < 3; itr++ {
 			select {
 			case <-lclCtxt.Done():
 				assert.False(true, "PubSub receive timeout")
 			case msg, ok := <-rxMsg:
 				assert.True(ok)
-				processedMsgs[string(msg.msg)] = true
+				processedMsgs[string(msg.msg)] = msg.meta
 			}
 		}
 
@@ -436,16 +449,17 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 	type msgWrap struct {
 		rxIdx int
 		msg   []byte
+		meta  map[string]string
 	}
 
 	// Support for receiving messages
 	rxMsg := make(chan msgWrap)
-	receiveMsg0 := func(ctxt context.Context, msg []byte) error {
-		rxMsg <- msgWrap{rxIdx: 0, msg: msg}
+	receiveMsg0 := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+		rxMsg <- msgWrap{rxIdx: 0, msg: msg, meta: meta}
 		return nil
 	}
-	receiveMsg1 := func(ctxt context.Context, msg []byte) error {
-		rxMsg <- msgWrap{rxIdx: 1, msg: msg}
+	receiveMsg1 := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+		rxMsg <- msgWrap{rxIdx: 1, msg: msg, meta: meta}
 		return nil
 	}
 
@@ -455,7 +469,9 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 	wg.Add(2)
 	rxCtxt, rxCancel := context.WithCancel(utCtxt)
 	receiver := func(
-		idx int, subscription string, handler func(ctxt context.Context, msg []byte) error,
+		idx int,
+		subscription string,
+		handler func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error,
 	) {
 		defer wg.Done()
 		log.Debugf("Start MSG Receiver %d", idx)
@@ -467,12 +483,15 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 
 	// Send messages
 	log.Debug("Publishing test messages")
-	testMsgs := map[string]bool{}
+	testMsgs := map[string]map[string]string{}
 	for itr := 0; itr < 3; itr++ {
 		msg := uuid.NewString()
-		_, err := uut.Publish(utCtxt, testTopic, []byte(msg), true)
+		meta := map[string]string{
+			uuid.NewString(): uuid.NewString(), uuid.NewString(): uuid.NewString(),
+		}
+		_, err := uut.Publish(utCtxt, testTopic, []byte(msg), meta, true)
 		assert.Nil(err)
-		testMsgs[msg] = true
+		testMsgs[msg] = meta
 	}
 	log.Debug("Published test messages")
 
@@ -481,7 +500,7 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 		lclCtxt, cancel := context.WithTimeout(utCtxt, time.Second*5)
 		defer cancel()
 
-		perSubRXMsgs := map[int]map[string]bool{}
+		perSubRXMsgs := map[int]map[string]map[string]string{}
 
 		for itr := 0; itr < 6; itr++ {
 			select {
@@ -490,9 +509,9 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 			case msg, ok := <-rxMsg:
 				assert.True(ok)
 				if _, ok := perSubRXMsgs[msg.rxIdx]; !ok {
-					perSubRXMsgs[msg.rxIdx] = make(map[string]bool)
+					perSubRXMsgs[msg.rxIdx] = make(map[string]map[string]string)
 				}
-				perSubRXMsgs[msg.rxIdx][string(msg.msg)] = true
+				perSubRXMsgs[msg.rxIdx][string(msg.msg)] = msg.meta
 			}
 		}
 

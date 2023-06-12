@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/apex/log"
@@ -25,7 +26,9 @@ func CreateBasicGCPPubSubClient(ctxt context.Context, projectID string) (*pubsub
 // Client Interface
 
 // PubSubMessageHandler callback to trigger when PubSub message received
-type PubSubMessageHandler func(ctxt context.Context, msg []byte) error
+type PubSubMessageHandler func(
+	ctxt context.Context, pubTimestamp time.Time, msg []byte, metadata map[string]string,
+) error
 
 // PubSubClient is a wrapper interface around the PubSub API with some ease-of-use features
 type PubSubClient interface {
@@ -117,11 +120,12 @@ type PubSubClient interface {
 		 @param ctxt context.Context - execution context
 		 @param topic string - topic name
 		 @param message []byte - message content
+		 @param metadata map[string]string - message metadata, which will be sent using attributes
 		 @param blocking bool - whether the call is blocking until publish is complete
 		 @returns when non-blocking, the async result object to check on publish status
 	*/
 	Publish(
-		ctxt context.Context, topic string, message []byte, blocking bool,
+		ctxt context.Context, topic string, message []byte, metadata map[string]string, blocking bool,
 	) (*pubsub.PublishResult, error)
 
 	/*
@@ -550,11 +554,12 @@ Publish publish a message to a topic
 	@param ctxt context.Context - execution context
 	@param topic string - topic name
 	@param message []byte - message content
+	@param metadata map[string]string - message metadata, which will be sent using attributes
 	@param blocking bool - whether the call is blocking until publish is complete
 	@returns when non-blocking, the async result object to check on publish status
 */
 func (p *pubsubClientImpl) Publish(
-	ctxt context.Context, topic string, message []byte, blocking bool,
+	ctxt context.Context, topic string, message []byte, metadata map[string]string, blocking bool,
 ) (*pubsub.PublishResult, error) {
 	logTag := p.GetLogTagsForContext(ctxt)
 
@@ -575,7 +580,7 @@ func (p *pubsubClientImpl) Publish(
 	}
 
 	log.WithFields(logTag).Debugf("Publishing message on topic '%s'", topic)
-	txHandle := topicHandle.Publish(ctxt, &pubsub.Message{Data: message})
+	txHandle := topicHandle.Publish(ctxt, &pubsub.Message{Data: message, Attributes: metadata})
 
 	if blocking {
 		// Wait for publish to finish
@@ -626,7 +631,7 @@ func (p *pubsubClientImpl) Subscribe(
 
 	// Install subscription receive
 	if err := subscriptionHandle.Receive(ctxt, func(ctx context.Context, m *pubsub.Message) {
-		if err := handler(ctx, m.Data); err != nil {
+		if err := handler(ctx, m.PublishTime, m.Data, m.Attributes); err != nil {
 			log.
 				WithError(err).
 				WithFields(logTag).
