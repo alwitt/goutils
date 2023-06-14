@@ -131,7 +131,7 @@ type PubSubClient interface {
 	/*
 		Subscribe subscribe for message on a subscription
 
-		This call is blocking.
+		THIS CALL IS BLOCKING!!
 
 		 @param ctxt context.Context - execution context
 		 @param subscription string - subscription name
@@ -599,7 +599,7 @@ func (p *pubsubClientImpl) Publish(
 /*
 Subscribe subscribe for message on a subscription.
 
-This call is blocking.
+THIS CALL IS BLOCKING!!
 
 	@param ctxt context.Context - execution context
 	@param subscription string - subscription name
