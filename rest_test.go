@@ -1,4 +1,4 @@
-package goutils
+package goutils_test
 
 import (
 	"bufio"
@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alwitt/goutils"
 	"github.com/apex/log"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -23,11 +24,11 @@ func TestRestAPIHanderRequestIDInjection(t *testing.T) {
 	log.SetLevel(log.DebugLevel)
 
 	// Case 0: no user request ID header defined
-	uutNoUserRequestIDHeader := RestAPIHandler{
-		Component: Component{
+	uutNoUserRequestIDHeader := goutils.RestAPIHandler{
+		Component: goutils.Component{
 			LogTags: log.Fields{"entity": "unit-tester"},
-			LogTagModifiers: []LogMetadataModifier{
-				ModifyLogMetadataByRestRequestParam,
+			LogTagModifiers: []goutils.LogMetadataModifier{
+				goutils.ModifyLogMetadataByRestRequestParam,
 			},
 		},
 		CallRequestIDHeaderField: nil,
@@ -40,8 +41,8 @@ func TestRestAPIHanderRequestIDInjection(t *testing.T) {
 
 		dummyHandler := func(w http.ResponseWriter, r *http.Request) {
 			callContext := r.Context()
-			assert.NotNil(callContext.Value(RestRequestParamKey{}))
-			v, ok := callContext.Value(RestRequestParamKey{}).(RestRequestParam)
+			assert.NotNil(callContext.Value(goutils.RestRequestParamKey{}))
+			v, ok := callContext.Value(goutils.RestRequestParamKey{}).(goutils.RestRequestParam)
 			assert.True(ok)
 			assert.NotEqual(rid, v.ID)
 			assert.Equal("GET", v.Method)
@@ -59,11 +60,11 @@ func TestRestAPIHanderRequestIDInjection(t *testing.T) {
 
 	// Case 1: user request ID header defined
 	testReqIDHeader := uuid.New().String()
-	uutWithUserRequestIDHeader := RestAPIHandler{
-		Component: Component{
+	uutWithUserRequestIDHeader := goutils.RestAPIHandler{
+		Component: goutils.Component{
 			LogTags: log.Fields{"entity": "unit-tester"},
-			LogTagModifiers: []LogMetadataModifier{
-				ModifyLogMetadataByRestRequestParam,
+			LogTagModifiers: []goutils.LogMetadataModifier{
+				goutils.ModifyLogMetadataByRestRequestParam,
 			},
 		},
 		CallRequestIDHeaderField: &testReqIDHeader,
@@ -76,8 +77,8 @@ func TestRestAPIHanderRequestIDInjection(t *testing.T) {
 
 		dummyHandler := func(w http.ResponseWriter, r *http.Request) {
 			callContext := r.Context()
-			assert.NotNil(callContext.Value(RestRequestParamKey{}))
-			v, ok := callContext.Value(RestRequestParamKey{}).(RestRequestParam)
+			assert.NotNil(callContext.Value(goutils.RestRequestParamKey{}))
+			v, ok := callContext.Value(goutils.RestRequestParamKey{}).(goutils.RestRequestParam)
 			assert.True(ok)
 			assert.Equal(rid, v.ID)
 			assert.Equal("DELETE", v.Method)
@@ -98,11 +99,11 @@ func TestRestAPIHandlerRequestLogging(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)
 
-	uut := RestAPIHandler{
-		Component: Component{
+	uut := goutils.RestAPIHandler{
+		Component: goutils.Component{
 			LogTags: log.Fields{"entity": "unit-tester"},
-			LogTagModifiers: []LogMetadataModifier{
-				ModifyLogMetadataByRestRequestParam,
+			LogTagModifiers: []goutils.LogMetadataModifier{
+				goutils.ModifyLogMetadataByRestRequestParam,
 			},
 		},
 		DoNotLogHeaders: map[string]bool{"Not-Allowed": true},
@@ -117,8 +118,8 @@ func TestRestAPIHandlerRequestLogging(t *testing.T) {
 
 		dummyHandler := func(w http.ResponseWriter, r *http.Request) {
 			callContext := r.Context()
-			assert.NotNil(callContext.Value(RestRequestParamKey{}))
-			v, ok := callContext.Value(RestRequestParamKey{}).(RestRequestParam)
+			assert.NotNil(callContext.Value(goutils.RestRequestParamKey{}))
+			v, ok := callContext.Value(goutils.RestRequestParamKey{}).(goutils.RestRequestParam)
 			assert.True(ok)
 			assert.Equal("GET", v.Method)
 			assert.Equal("/testing", v.URI)
@@ -140,11 +141,11 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 	log.SetLevel(log.DebugLevel)
 
 	testReqIDHeader := uuid.New().String()
-	uut := RestAPIHandler{
-		Component: Component{
+	uut := goutils.RestAPIHandler{
+		Component: goutils.Component{
 			LogTags: log.Fields{"entity": "unit-tester"},
-			LogTagModifiers: []LogMetadataModifier{
-				ModifyLogMetadataByRestRequestParam,
+			LogTagModifiers: []goutils.LogMetadataModifier{
+				goutils.ModifyLogMetadataByRestRequestParam,
 			},
 		},
 		CallRequestIDHeaderField: &testReqIDHeader,
