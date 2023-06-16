@@ -42,7 +42,7 @@ func TestPubSubTopicCRUD(t *testing.T) {
 	uut, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
 	assert.Nil(err)
 
-	assert.Nil(uut.SyncWithExisting(utCtxt))
+	assert.Nil(uut.UpdateLocalTopicCache(utCtxt))
 
 	// Case 0: unknown topic
 	{
@@ -122,7 +122,7 @@ func TestPubSubTopicSync(t *testing.T) {
 	))
 
 	// Sync from the other client
-	assert.Nil(uut1.SyncWithExisting(utCtxt))
+	assert.Nil(uut1.UpdateLocalTopicCache(utCtxt))
 	{
 		config, err := uut1.GetTopic(utCtxt, topic0)
 		assert.Nil(err)
@@ -146,7 +146,8 @@ func TestPubSubSubscriptionCRUD(t *testing.T) {
 	uut, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
 	assert.Nil(err)
 
-	assert.Nil(uut.SyncWithExisting(utCtxt))
+	assert.Nil(uut.UpdateLocalTopicCache(utCtxt))
+	assert.Nil(uut.UpdateLocalSubscriptionCache(utCtxt))
 
 	// Case 0: unknown subscription
 	{
@@ -219,7 +220,8 @@ func TestPubSubDataPassing(t *testing.T) {
 	uut, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
 	assert.Nil(err)
 
-	assert.Nil(uut.SyncWithExisting(utCtxt))
+	assert.Nil(uut.UpdateLocalTopicCache(utCtxt))
+	assert.Nil(uut.UpdateLocalSubscriptionCache(utCtxt))
 
 	// Create test topic
 	testTopic := fmt.Sprintf("goutil-ut-topic-3-%s", uuid.NewString())
@@ -308,7 +310,8 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 	uut0, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-0"})
 	assert.Nil(err)
 
-	assert.Nil(uut0.SyncWithExisting(utCtxt))
+	assert.Nil(uut0.UpdateLocalTopicCache(utCtxt))
+	assert.Nil(uut0.UpdateLocalSubscriptionCache(utCtxt))
 
 	// Create test topic
 	testTopic := fmt.Sprintf("goutil-ut-topic-4-%s", uuid.NewString())
@@ -326,7 +329,8 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 	// Create second client
 	uut1, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-1"})
 	assert.Nil(err)
-	assert.Nil(uut1.SyncWithExisting(utCtxt))
+	assert.Nil(uut1.UpdateLocalTopicCache(utCtxt))
+	assert.Nil(uut1.UpdateLocalSubscriptionCache(utCtxt))
 
 	type msgWrap struct {
 		rxIdx int
@@ -427,7 +431,8 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 	uut, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
 	assert.Nil(err)
 
-	assert.Nil(uut.SyncWithExisting(utCtxt))
+	assert.Nil(uut.UpdateLocalTopicCache(utCtxt))
+	assert.Nil(uut.UpdateLocalSubscriptionCache(utCtxt))
 
 	// Create test topic
 	testTopic := fmt.Sprintf("goutil-ut-topic-5-%s", uuid.NewString())

@@ -33,11 +33,18 @@ type PubSubMessageHandler func(
 // PubSubClient is a wrapper interface around the PubSub API with some ease-of-use features
 type PubSubClient interface {
 	/*
-		SyncWithExisting sync the current set of topics and subscriptions the client can find
+		UpdateLocalTopicCache sync local topic cache with existing topics in project
 
 		 @param ctxt context.Context - execution context
 	*/
-	SyncWithExisting(ctxt context.Context) error
+	UpdateLocalTopicCache(ctxt context.Context) error
+
+	/*
+		UpdateLocalSubscriptionCache sync local subscription cache with existing subscriptions in project
+
+		 @param ctxt context.Context - execution context
+	*/
+	UpdateLocalSubscriptionCache(ctxt context.Context) error
 
 	/*
 		CreateTopic create PubSub topic
@@ -179,51 +186,52 @@ func GetNewPubSubClientInstance(client *pubsub.Client, logTags log.Fields) (PubS
 // Maintenance
 
 /*
-SyncWithExisting sync the current set of topics and subscriptions the client can find
+UpdateLocalTopicCache sync local topic cache with existing topics in project
 
 	@param ctxt context.Context - execution context
 */
-func (p *pubsubClientImpl) SyncWithExisting(ctxt context.Context) error {
+func (p *pubsubClientImpl) UpdateLocalTopicCache(ctxt context.Context) error {
 	logTag := p.GetLogTagsForContext(ctxt)
-
-	// Read all known topics
-	{
-		p.topicLock.Lock()
-		defer p.topicLock.Unlock()
-		topicItr := p.client.Topics(ctxt)
-		for {
-			topicEntry, err := topicItr.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				log.WithError(err).WithFields(logTag).Error("Topic iterator query failure")
-				return err
-			}
-			p.topics[topicEntry.ID()] = topicEntry
-			log.WithFields(logTag).Debugf("Found topic '%s'", topicEntry.ID())
+	p.topicLock.Lock()
+	defer p.topicLock.Unlock()
+	topicItr := p.client.Topics(ctxt)
+	for {
+		topicEntry, err := topicItr.Next()
+		if err == iterator.Done {
+			break
 		}
-	}
-
-	// Read all known subscriptions
-	{
-		p.subLock.Lock()
-		defer p.subLock.Unlock()
-		subItr := p.client.Subscriptions(ctxt)
-		for {
-			subEntry, err := subItr.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				log.WithError(err).WithFields(logTag).Error("Topic iterator query failure")
-				return err
-			}
-			p.subscriptions[subEntry.ID()] = subEntry
-			log.WithFields(logTag).Debugf("Found subscription '%s'", subEntry.ID())
+		if err != nil {
+			log.WithError(err).WithFields(logTag).Error("Topic iterator query failure")
+			return err
 		}
+		p.topics[topicEntry.ID()] = topicEntry
+		log.WithFields(logTag).Debugf("Found topic '%s'", topicEntry.ID())
 	}
+	return nil
+}
 
+/*
+UpdateLocalSubscriptionCache sync local subscription cache with existing subscriptions in project
+
+	@param ctxt context.Context - execution context
+*/
+func (p *pubsubClientImpl) UpdateLocalSubscriptionCache(ctxt context.Context) error {
+	logTag := p.GetLogTagsForContext(ctxt)
+	p.subLock.Lock()
+	defer p.subLock.Unlock()
+	subItr := p.client.Subscriptions(ctxt)
+	for {
+		subEntry, err := subItr.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			log.WithError(err).WithFields(logTag).Error("Topic iterator query failure")
+			return err
+		}
+		p.subscriptions[subEntry.ID()] = subEntry
+		log.WithFields(logTag).Debugf("Found subscription '%s'", subEntry.ID())
+	}
 	return nil
 }
 
@@ -548,6 +556,19 @@ func (p *pubsubClientImpl) UpdateSubscription(
 // ==========================================================================================
 // Message Passing
 
+// getTopicHandle get topic handle
+func (p *pubsubClientImpl) getTopicHandle(ctxt context.Context, topic string) (*pubsub.Topic, error) {
+	p.topicLock.RLock()
+	defer p.topicLock.RUnlock()
+
+	t, ok := p.topics[topic]
+	if !ok {
+		err := fmt.Errorf("topic '%s' is unknown", topic)
+		return nil, err
+	}
+	return t, nil
+}
+
 /*
 Publish publish a message to a topic
 
@@ -564,19 +585,10 @@ func (p *pubsubClientImpl) Publish(
 	logTag := p.GetLogTagsForContext(ctxt)
 
 	// Get the topic handle
-	var topicHandle *pubsub.Topic
-	{
-		p.topicLock.RLock()
-		defer p.topicLock.RUnlock()
-
-		t, ok := p.topics[topic]
-		if !ok {
-			err := fmt.Errorf("topic '%s' is unknown", topic)
-			log.WithError(err).WithFields(logTag).Errorf("Publish on topic '%s' failed", topic)
-			return nil, err
-		}
-
-		topicHandle = t
+	topicHandle, err := p.getTopicHandle(ctxt, topic)
+	if err != nil {
+		log.WithError(err).WithFields(logTag).Errorf("Publish on topic '%s' failed", topic)
+		return nil, err
 	}
 
 	log.WithFields(logTag).Debugf("Publishing message on topic '%s'", topic)
@@ -596,6 +608,20 @@ func (p *pubsubClientImpl) Publish(
 	return txHandle, nil
 }
 
+// getSubscriptionHandle get subscription handle
+func (p *pubsubClientImpl) getSubscriptionHandle(ctxt context.Context, subscription string) (*pubsub.Subscription, error) {
+	p.subLock.RLock()
+	defer p.subLock.RUnlock()
+
+	s, ok := p.subscriptions[subscription]
+	if !ok {
+		err := fmt.Errorf("subscription '%s' is unknown", subscription)
+		return nil, err
+	}
+
+	return s, nil
+}
+
 /*
 Subscribe subscribe for message on a subscription.
 
@@ -611,22 +637,10 @@ func (p *pubsubClientImpl) Subscribe(
 	logTag := p.GetLogTagsForContext(ctxt)
 
 	// Get the subscription handle
-	var subscriptionHandle *pubsub.Subscription
-	{
-		p.subLock.RLock()
-		defer p.subLock.RUnlock()
-
-		s, ok := p.subscriptions[subscription]
-		if !ok {
-			err := fmt.Errorf("subscription '%s' is unknown", subscription)
-			log.
-				WithError(err).
-				WithFields(logTag).
-				Errorf("Listen on subscription '%s' failed", subscription)
-			return err
-		}
-
-		subscriptionHandle = s
+	subscriptionHandle, err := p.getSubscriptionHandle(ctxt, subscription)
+	if err != nil {
+		log.WithError(err).WithFields(logTag).Errorf("Listen on subscription '%s' failed", subscription)
+		return err
 	}
 
 	// Install subscription receive

@@ -172,7 +172,7 @@ func (p *taskProcessorImpl) StartEventLoop(wg *sync.WaitGroup) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer log.WithFields(p.LogTags).Info("Event loop exiting")
+		defer log.WithFields(p.LogTags).Info("Event loop exited")
 		finished := false
 		for !finished {
 			select {
@@ -243,8 +243,13 @@ func GetNewTaskDemuxProcessorInstance(
 	optCtxt, cancel := context.WithCancel(ctxt)
 	workers := make([]TaskProcessor, workerNum)
 	for itr := 0; itr < workerNum; itr++ {
+		perWorkerLogTags := log.Fields{}
+		for field, value := range logTags {
+			perWorkerLogTags[field] = value
+		}
+		perWorkerLogTags["worker"] = itr
 		workerTP, err := GetNewTaskProcessorInstance(
-			optCtxt, fmt.Sprintf("%s.worker.%d", instanceName, itr), taskBufferLen, logTags,
+			optCtxt, fmt.Sprintf("%s.worker.%d", instanceName, itr), taskBufferLen, perWorkerLogTags,
 		)
 		if err != nil {
 			cancel()

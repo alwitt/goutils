@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/apex/log"
@@ -114,5 +115,32 @@ func ModifyLogMetadataByRestRequestParam(ctxt context.Context, theTags log.Field
 		if ok {
 			v.updateLogTags(theTags)
 		}
+	}
+}
+
+// ======================================================================================
+
+/*
+TimeBoundedWaitGroupWait is a wrapper around wait group wait with a time limit
+
+	@param wgCtxt context.Context - context associated with the wait group
+	@param wg *sync.WaitGroup - the wait group to
+	@param timeout time.Duration - wait timeout duration
+*/
+func TimeBoundedWaitGroupWait(
+	wgCtxt context.Context, wg *sync.WaitGroup, timeout time.Duration,
+) error {
+	c := make(chan bool)
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+	select {
+	case <-c:
+		return nil
+	case <-wgCtxt.Done():
+		return fmt.Errorf("associated context expired")
+	case <-time.After(timeout):
+		return fmt.Errorf("wait-group wait timed out")
 	}
 }

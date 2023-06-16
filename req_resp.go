@@ -83,6 +83,23 @@ type RequestResponseClient interface {
 	) (string, error)
 
 	/*
+		Respond respond to an inbound request
+
+		 @param ctxt context.Context - execution context
+		 @param originalReq ReqRespMessage - original request
+		 @param message []byte - response message payload
+		 @param metadata map[string]string - request metadata
+		 @param blocking bool - whether the call is blocking
+	*/
+	Respond(
+		ctxt context.Context,
+		originalReq ReqRespMessage,
+		message []byte,
+		metadata map[string]string,
+		blocking bool,
+	) error
+
+	/*
 		Stop stop any support background tasks which were started
 
 		 @param ctxt context.Context - execution context
@@ -109,8 +126,8 @@ type requestContext struct {
 // updateLogTags updates Apex log.Fields map with values the requests's parameters
 func (c *requestContext) updateLogTags(tags log.Fields) {
 	tags["req_request_id"] = c.requestID
-	tags["req_sender_id"] = c.senderID
-	tags["req_target_id"] = c.targetID
+	tags["sender_id"] = c.senderID
+	tags["target_id"] = c.targetID
 }
 
 // modifyLogMetadataByRRRequestParam update log metadata with info from requestContext
@@ -131,7 +148,8 @@ type pubsubReqRespClient struct {
 	inboundProcessor       TaskProcessor
 	inboundRequestHandler  ReqRespMessageHandler
 	outboundProcessor      TaskProcessor
-	outboundRequests       map[string]requestContext
+	outboundRequests       map[string]*requestContext
+	parentContext          context.Context
 	processorContext       context.Context
 	processorContextCancel context.CancelFunc
 	wg                     sync.WaitGroup
@@ -169,31 +187,84 @@ func GetNewPubSubRequestResponseClientInstance(
 	// Prepare PubSub topic and subscription for inbound messages
 
 	// Prepare the topic
-	if err := client.CreateTopic(
-		parentCtxt, clientTargetID, &pubsub.TopicConfig{RetentionDuration: msgRetentionTTL},
-	); err != nil {
-		log.
-			WithError(err).
-			WithFields(logTags).
-			Errorf("Failed when creating PubSub topic '%s'", clientTargetID)
-		workerCtxtCancel()
-		return nil, err
+	if existingTopic, err := client.GetTopic(parentCtxt, clientTargetID); err != nil {
+		// Create new topic
+		log.WithFields(logTags).Warnf("Topic '%s' is not known. Creating...", clientTargetID)
+		if err := client.CreateTopic(
+			parentCtxt, clientTargetID, &pubsub.TopicConfig{RetentionDuration: msgRetentionTTL},
+		); err != nil {
+			log.
+				WithError(err).
+				WithFields(logTags).
+				Errorf("Failed when creating PubSub topic '%s'", clientTargetID)
+			workerCtxtCancel()
+			return nil, err
+		}
+	} else {
+		// Use existing topic
+		log.WithFields(logTags).Infof("Reusing existing topic '%s'", clientTargetID)
+		updatedTopic := pubsub.TopicConfigToUpdate{
+			Labels:               existingTopic.Labels,
+			MessageStoragePolicy: &existingTopic.MessageStoragePolicy,
+			RetentionDuration:    msgRetentionTTL,
+			SchemaSettings:       existingTopic.SchemaSettings,
+		}
+		if err := client.UpdateTopic(parentCtxt, clientTargetID, updatedTopic); err != nil {
+			log.
+				WithError(err).
+				WithFields(logTags).
+				Errorf("Failed when updating PubSub topic '%s'", clientTargetID)
+			workerCtxtCancel()
+			return nil, err
+		}
 	}
 
 	// Prepare the subscription
 	receiveSubscription := fmt.Sprintf("%s.%s", clientName, clientTargetID)
-	if err := client.CreateSubscription(
-		parentCtxt,
-		clientTargetID,
-		receiveSubscription,
-		pubsub.SubscriptionConfig{RetentionDuration: msgRetentionTTL},
-	); err != nil {
-		log.
-			WithError(err).
-			WithFields(logTags).
-			Errorf("Failed when creating PubSub subscription '%s'", receiveSubscription)
-		workerCtxtCancel()
-		return nil, err
+	if existingSubscription, err := client.GetSubscription(parentCtxt, receiveSubscription); err != nil {
+		// Create new subscription
+		log.WithFields(logTags).Warnf("Subscription '%s' is not known. Creating...", receiveSubscription)
+		if err := client.CreateSubscription(
+			parentCtxt,
+			clientTargetID,
+			receiveSubscription,
+			pubsub.SubscriptionConfig{
+				ExpirationPolicy:  time.Hour * 24,
+				RetentionDuration: msgRetentionTTL,
+			},
+		); err != nil {
+			log.
+				WithError(err).
+				WithFields(logTags).
+				Errorf("Failed when creating PubSub subscription '%s'", receiveSubscription)
+			workerCtxtCancel()
+			return nil, err
+		}
+	} else {
+		// Use existing subscription
+		log.WithFields(logTags).Infof("Reusing existing subscription '%s'", receiveSubscription)
+		updatedSubscription := pubsub.SubscriptionConfigToUpdate{
+			PushConfig:                &existingSubscription.PushConfig,
+			BigQueryConfig:            &existingSubscription.BigQueryConfig,
+			AckDeadline:               existingSubscription.AckDeadline,
+			RetainAckedMessages:       existingSubscription.RetainAckedMessages,
+			RetentionDuration:         msgRetentionTTL,
+			ExpirationPolicy:          time.Hour * 24,
+			DeadLetterPolicy:          existingSubscription.DeadLetterPolicy,
+			Labels:                    existingSubscription.Labels,
+			RetryPolicy:               existingSubscription.RetryPolicy,
+			EnableExactlyOnceDelivery: existingSubscription.EnableExactlyOnceDelivery,
+		}
+		if err := client.UpdateSubscription(
+			parentCtxt, receiveSubscription, updatedSubscription,
+		); err != nil {
+			log.
+				WithError(err).
+				WithFields(logTags).
+				Errorf("Failed when updating PubSub subscription '%s'", receiveSubscription)
+			workerCtxtCancel()
+			return nil, err
+		}
 	}
 
 	// -----------------------------------------------------------------------------------------
@@ -244,7 +315,8 @@ func GetNewPubSubRequestResponseClientInstance(
 		inboundProcessor:       inboundProcessor,
 		inboundRequestHandler:  nil,
 		outboundProcessor:      outboundProcessor,
-		outboundRequests:       make(map[string]requestContext),
+		outboundRequests:       make(map[string]*requestContext),
+		parentContext:          parentCtxt,
 		processorContext:       workerContext,
 		processorContextCancel: workerCtxtCancel,
 		wg:                     sync.WaitGroup{},
@@ -280,6 +352,14 @@ func GetNewPubSubRequestResponseClientInstance(
 		return nil, err
 	}
 
+	// Outgoing responses correspond with incoming requests
+	if err := inboundProcessor.AddToTaskExecutionMap(
+		reflect.TypeOf(rrResponsePayload{}), instance.respond,
+	); err != nil {
+		log.WithError(err).WithFields(logTags).Error("Unable to install task definition")
+		return nil, err
+	}
+
 	// -----------------------------------------------------------------------------------------
 	// Listen for messages on previously created subscription
 
@@ -297,6 +377,17 @@ func GetNewPubSubRequestResponseClientInstance(
 	}()
 
 	// -----------------------------------------------------------------------------------------
+	// Start the daemon processors
+
+	if err := outboundProcessor.StartEventLoop(&instance.wg); err != nil {
+		log.WithError(err).WithFields(logTags).Error("Unable to outbound processing task pool")
+		return nil, err
+	}
+	if err := inboundProcessor.StartEventLoop(&instance.wg); err != nil {
+		log.WithError(err).WithFields(logTags).Error("Unable to inbound processing task pool")
+		return nil, err
+	}
+
 	return instance, nil
 }
 
@@ -311,7 +402,7 @@ func (c *pubsubReqRespClient) SetInboundRequestHandler(
 ) error {
 	logTags := c.GetLogTagsForContext(ctxt)
 	c.inboundRequestHandler = handler
-	log.WithFields(logTags).Info("Changed in bound request handler")
+	log.WithFields(logTags).Info("Changed inbound request handler")
 	return nil
 }
 
@@ -331,8 +422,7 @@ func (c *pubsubReqRespClient) Stop(ctxt context.Context) error {
 		return err
 	}
 
-	c.wg.Wait()
-	return nil
+	return TimeBoundedWaitGroupWait(c.parentContext, &c.wg, time.Second*10)
 }
 
 // ===========================================================================================
@@ -340,7 +430,7 @@ func (c *pubsubReqRespClient) Stop(ctxt context.Context) error {
 
 type rrRequestPayload struct {
 	requestID string
-	entry     requestContext
+	request   requestContext
 	message   []byte
 	metadata  map[string]string
 }
@@ -399,12 +489,12 @@ func (c *pubsubReqRespClient) Request(
 		WithFields(logTags).
 		WithField("target-id", targetID).
 		WithField("request-id", requestID).
-		Info("Submitting new outbound request")
+		Info("Submitting new outbound REQUEST")
 
 	// Make the request
 	taskParams := rrRequestPayload{
 		requestID: requestID,
-		entry:     requestEntry,
+		request:   requestEntry,
 		message:   message,
 		metadata:  metadata,
 	}
@@ -460,40 +550,188 @@ func (c *pubsubReqRespClient) request(params interface{}) error {
 
 // handleRequest contains the actual logic for `Request`
 func (c *pubsubReqRespClient) handleRequest(params rrRequestPayload) error {
-	logTags := c.GetLogTagsForContext(c.processorContext)
+	lclCtxt := context.WithValue(c.processorContext, requestContextKey{}, params.request)
+	logTags := c.GetLogTagsForContext(lclCtxt)
+
+	if params.metadata == nil {
+		params.metadata = make(map[string]string)
+	}
 
 	// Add additional information to message metadata
 	params.metadata[rrMsgAttributeNameRequestID] = params.requestID
 	params.metadata[rrMsgAttributeNameSenderID] = c.targetID
-	params.metadata[rrMsgAttributeNameTargetID] = params.entry.targetID
+	params.metadata[rrMsgAttributeNameTargetID] = params.request.targetID
 	params.metadata[rrMsgAttributeNameIsRequest] = "true"
 
 	// Publish the message
 	log.
 		WithFields(logTags).
-		WithField("target-id", params.entry.targetID).
-		WithField("request-id", params.requestID).
 		Debug("Publishing new request")
 	if _, err := c.psClient.Publish(
-		c.processorContext, params.entry.targetID, params.message, params.metadata, true,
+		c.processorContext, params.request.targetID, params.message, params.metadata, true,
 	); err != nil {
 		log.
 			WithError(err).
 			WithFields(logTags).
-			WithField("target-id", params.entry.targetID).
-			WithField("request-id", params.requestID).
 			Error("PubSub publish failed")
 		return err
 	}
 
 	// Record the message context
-	c.outboundRequests[params.requestID] = params.entry
+	c.outboundRequests[params.requestID] = &params.request
 
 	log.
 		WithFields(logTags).
-		WithField("target-id", params.entry.targetID).
-		WithField("request-id", params.requestID).
 		Debug("Published new request")
+
+	return nil
+}
+
+// ===========================================================================================
+// Send Outbound Response
+
+type rrResponsePayload struct {
+	request  requestContext
+	message  []byte
+	metadata map[string]string
+}
+
+/*
+Respond respond to an inbound request
+
+	@param ctxt context.Context - execution context
+	@param originalReq ReqRespMessage - original request
+	@param message []byte - response message payload
+	@param metadata map[string]string - request metadata
+	@param blocking bool - whether the call is blocking
+*/
+func (c *pubsubReqRespClient) Respond(
+	ctxt context.Context,
+	originalReq ReqRespMessage,
+	message []byte,
+	metadata map[string]string,
+	blocking bool,
+) error {
+	logTags := c.GetLogTagsForContext(ctxt)
+
+	currentTime := time.Now().UTC()
+
+	// Define inbound response context
+	response := requestContext{
+		requestID:        originalReq.RequestID,
+		senderID:         originalReq.TargetID,
+		targetID:         originalReq.SenderID,
+		createdAt:        currentTime,
+		completeCallback: nil,
+	}
+
+	// Define back channel, if call is blocking
+	finishSignal := make(chan bool)
+	if blocking {
+		response.completeCallback = func() {
+			finishSignal <- true
+		}
+	}
+
+	log.
+		WithFields(logTags).
+		WithField("orig-target-id", originalReq.TargetID).
+		WithField("orig-request-id", originalReq.RequestID).
+		Info("Submitting new outbound RESPONSE")
+
+	// Make the request
+	taskParams := rrResponsePayload{
+		request:  response,
+		message:  message,
+		metadata: metadata,
+	}
+	if err := c.inboundProcessor.Submit(ctxt, taskParams); err != nil {
+		log.
+			WithError(err).
+			WithFields(logTags).
+			WithField("orig-target-id", originalReq.TargetID).
+			WithField("orig-request-id", originalReq.RequestID).
+			Error("Failed to submit 'Respond' job")
+		return err
+	}
+
+	// Wait for response to be sent
+	if blocking {
+		log.
+			WithFields(logTags).
+			WithField("orig-target-id", originalReq.TargetID).
+			WithField("orig-request-id", originalReq.RequestID).
+			Info("Wait until response sent")
+
+		select {
+		case <-ctxt.Done():
+			err := fmt.Errorf("request timed out waiting response transmit")
+			log.
+				WithError(err).
+				WithFields(logTags).
+				WithField("orig-target-id", originalReq.TargetID).
+				WithField("orig-request-id", originalReq.RequestID).
+				Error("Outbound response failed")
+			return err
+		case <-finishSignal:
+			log.
+				WithFields(logTags).
+				WithField("orig-target-id", originalReq.TargetID).
+				WithField("orig-request-id", originalReq.RequestID).
+				Info("Transmitted response")
+		}
+	}
+	return nil
+}
+
+func (c *pubsubReqRespClient) respond(params interface{}) error {
+	// Convert params into expected data type
+	if responseParams, ok := params.(rrResponsePayload); ok {
+		return c.handleRespond(responseParams)
+	}
+	err := fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(params))
+	logTags := c.GetLogTagsForContext(c.processorContext)
+	log.WithError(err).WithFields(logTags).Error("'Respond' processing failure")
+	return err
+}
+
+// handleRespond contains the actual logic for `Respond`
+func (c *pubsubReqRespClient) handleRespond(params rrResponsePayload) error {
+	lclCtxt := context.WithValue(c.processorContext, requestContextKey{}, params.request)
+	logTags := c.GetLogTagsForContext(lclCtxt)
+
+	if params.metadata == nil {
+		params.metadata = make(map[string]string)
+	}
+
+	// Add additional information to message metadata
+	params.metadata[rrMsgAttributeNameRequestID] = params.request.requestID
+	params.metadata[rrMsgAttributeNameSenderID] = c.targetID
+	params.metadata[rrMsgAttributeNameTargetID] = params.request.targetID
+	params.metadata[rrMsgAttributeNameIsRequest] = "false"
+
+	// Publish the message
+	log.
+		WithFields(logTags).
+		Debug("Publishing new response")
+	if _, err := c.psClient.Publish(
+		c.processorContext, params.request.targetID, params.message, params.metadata, true,
+	); err != nil {
+		log.
+			WithError(err).
+			WithFields(logTags).
+			Error("PubSub publish failed")
+		return err
+	}
+
+	log.
+		WithFields(logTags).
+		Debug("Published new request")
+
+	// Unblock the original caller
+	if params.request.completeCallback != nil {
+		params.request.completeCallback()
+	}
 
 	return nil
 }
@@ -509,6 +747,7 @@ type rrInboundRequestPayload struct {
 }
 
 type rrInboundResponsePayload struct {
+	senderID  string
 	requestID string
 	timestamp time.Time
 	message   []byte
@@ -593,6 +832,7 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 
 		// Define task param
 		taskParams := rrInboundResponsePayload{
+			senderID:  senderID,
 			requestID: requestID,
 			timestamp: pubTimestamp,
 			message:   msg,
@@ -653,7 +893,7 @@ func (c *pubsubReqRespClient) handleInboundRequest(params rrInboundRequestPayloa
 		RequestID: params.requestID,
 		SenderID:  params.entry.senderID,
 		TargetID:  params.entry.targetID,
-		IsRequest: false,
+		IsRequest: true,
 		Timestamp: params.entry.createdAt,
 		Metadata:  params.metadata,
 		Payload:   params.message,
@@ -706,8 +946,8 @@ func (c *pubsubReqRespClient) handleInboundResponse(params rrInboundResponsePayl
 	// Package the message up for forwarding
 	forwardMsg := ReqRespMessage{
 		RequestID: params.requestID,
-		SenderID:  originalReq.senderID,
-		TargetID:  originalReq.targetID,
+		SenderID:  params.senderID,
+		TargetID:  originalReq.senderID,
 		IsRequest: false,
 		Timestamp: params.timestamp,
 		Metadata:  params.metadata,
@@ -732,8 +972,11 @@ func (c *pubsubReqRespClient) handleInboundResponse(params rrInboundResponsePayl
 
 		// Forget the request entry
 		delete(c.outboundRequests, params.requestID)
-		// Notify anyone waiting
-		originalReq.completeCallback()
+
+		if originalReq.completeCallback != nil {
+			// Notify anyone waiting
+			originalReq.completeCallback()
+		}
 	}
 
 	return nil
