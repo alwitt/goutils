@@ -17,6 +17,8 @@ Provides common support components used in other Golang projects.
 | `RestAPIHandler` | Base `struct` for other REST API handlers | Contains utility methods, and a REST request logging middleware. |
 | `TaskProcessor` | An asynchronous job queue system | Provides single threaded and multi threaded worker pool implementation. |
 | `IntervalTimer` | Task execution trigger interval timer | Operates in periodic or one-shot mode. |
+| `PubSubClient` | PubSub client providing higher layer APIs | |
+| `RequestResponseClient` | Support request-response pattern between multiple nodes, where any node can request any other node/s. | Currently, SDK only provides a PubSub based client. |
 
 ## Getting Started
 
@@ -27,6 +29,10 @@ make
 ```
 
 to prepare the development and verify linters pass. Verify project is working with
+
+> **NOTE:** The PubSub related tests required GCP credential configuration JSON, and the name of the GCP project provided as ENV variables.
+> * `UNITTEST_GCP_PROJECT_ID` - GCP project ID name
+> * `GOOGLE_APPLICATION_CREDENTIALS` - GCP authentication config JSON
 
 ```
 make test
