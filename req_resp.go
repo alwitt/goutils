@@ -130,6 +130,17 @@ func (c *requestContext) updateLogTags(tags log.Fields) {
 	tags["target_id"] = c.targetID
 }
 
+// String toString function
+func (c *requestContext) String() string {
+	return fmt.Sprintf(
+		"(REQ-RESP[%s] (%s ==> %s) DEADLINE %s)",
+		c.requestID,
+		c.senderID,
+		c.targetID,
+		c.deadLine.Format(time.RFC3339),
+	)
+}
+
 // modifyLogMetadataByRRRequestParam update log metadata with info from requestContext
 func modifyLogMetadataByRRRequestParam(ctxt context.Context, theTags log.Fields) {
 	if ctxt.Value(requestContextKey{}) != nil {
@@ -152,34 +163,43 @@ type pubsubReqRespClient struct {
 	parentContext          context.Context
 	processorContext       context.Context
 	processorContextCancel context.CancelFunc
+	checkTimer             IntervalTimer
 	wg                     sync.WaitGroup
+}
+
+// PubSubRequestResponseClientParam configuration parameters of PubSub based RequestResponseClient
+type PubSubRequestResponseClientParam struct {
+	// TargetID the ID to target to send a request (or response) to this client
+	TargetID string
+	// Name client instance name
+	Name string
+	// PSClient base pubsub client
+	PSClient PubSubClient
+	// MsgRetentionTTL PubSub message TTL, after which the message is purged.
+	MsgRetentionTTL time.Duration
+	// LogTags metadata fields to include in the logs
+	LogTags log.Fields
+	// CustomLogModifiers additional log metadata modifiers to use
+	CustomLogModifiers []LogMetadataModifier
+	// SupportWorkerCount number of support workers to spawn to process incoming messages
+	SupportWorkerCount int
+	// TimeoutEnforceInt interval between request timeout checks
+	TimeoutEnforceInt time.Duration
 }
 
 /*
 GetNewPubSubRequestResponseClientInstance get PubSub based RequestResponseClient
 
 	@param parentCtxt context.Context - parent context
-	@param clientTargetID string - the ID to target to send a request (or response) to this client
-	@param clientName string - client instance name
-	@param client PubSubClient - base PubSub client
-	@param msgRetentionTTL time.Duration - PubSub message TTL, after which the message is purged
-	@param logTags log.Fields - metadata fields to include in the logs
-	@param addLogModifiers []LogMetadataModifier - additional log metadata modifiers to use
-	@param supportWorkerCount int - number of support workers to spawn to process incoming messages
+	@param params PubSubRequestResponseClientParam - client config parameters
 	@return new RequestResponseClient instance
 */
 func GetNewPubSubRequestResponseClientInstance(
 	parentCtxt context.Context,
-	clientTargetID string,
-	clientName string,
-	client PubSubClient,
-	msgRetentionTTL time.Duration,
-	logTags log.Fields,
-	addLogModifiers []LogMetadataModifier,
-	supportWorkerCount int,
+	params PubSubRequestResponseClientParam,
 ) (RequestResponseClient, error) {
-	logTags["rr-instance"] = clientName
-	logTags["rr-target-id"] = clientTargetID
+	params.LogTags["rr-instance"] = params.Name
+	params.LogTags["rr-target-id"] = params.TargetID
 
 	workerContext, workerCtxtCancel := context.WithCancel(parentCtxt)
 
@@ -187,80 +207,82 @@ func GetNewPubSubRequestResponseClientInstance(
 	// Prepare PubSub topic and subscription for inbound messages
 
 	// Prepare the topic
-	if existingTopic, err := client.GetTopic(parentCtxt, clientTargetID); err != nil {
+	if existingTopic, err := params.PSClient.GetTopic(parentCtxt, params.TargetID); err != nil {
 		// Create new topic
-		log.WithFields(logTags).Warnf("Topic '%s' is not known. Creating...", clientTargetID)
-		if err := client.CreateTopic(
-			parentCtxt, clientTargetID, &pubsub.TopicConfig{RetentionDuration: msgRetentionTTL},
+		log.WithFields(params.LogTags).Warnf("Topic '%s' is not known. Creating...", params.TargetID)
+		if err := params.PSClient.CreateTopic(
+			parentCtxt, params.TargetID, &pubsub.TopicConfig{RetentionDuration: params.MsgRetentionTTL},
 		); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
-				Errorf("Failed when creating PubSub topic '%s'", clientTargetID)
+				WithFields(params.LogTags).
+				Errorf("Failed when creating PubSub topic '%s'", params.TargetID)
 			workerCtxtCancel()
 			return nil, err
 		}
 	} else {
 		// Use existing topic
-		log.WithFields(logTags).Infof("Reusing existing topic '%s'", clientTargetID)
+		log.WithFields(params.LogTags).Infof("Reusing existing topic '%s'", params.TargetID)
 		updatedTopic := pubsub.TopicConfigToUpdate{
 			Labels:               existingTopic.Labels,
 			MessageStoragePolicy: &existingTopic.MessageStoragePolicy,
-			RetentionDuration:    msgRetentionTTL,
+			RetentionDuration:    params.MsgRetentionTTL,
 			SchemaSettings:       existingTopic.SchemaSettings,
 		}
-		if err := client.UpdateTopic(parentCtxt, clientTargetID, updatedTopic); err != nil {
+		if err := params.PSClient.UpdateTopic(parentCtxt, params.TargetID, updatedTopic); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
-				Errorf("Failed when updating PubSub topic '%s'", clientTargetID)
+				WithFields(params.LogTags).
+				Errorf("Failed when updating PubSub topic '%s'", params.TargetID)
 			workerCtxtCancel()
 			return nil, err
 		}
 	}
 
 	// Prepare the subscription
-	receiveSubscription := fmt.Sprintf("%s.%s", clientName, clientTargetID)
-	if existingSubscription, err := client.GetSubscription(parentCtxt, receiveSubscription); err != nil {
+	receiveSubscription := fmt.Sprintf("%s.%s", params.Name, params.TargetID)
+	if existingSubscription, err := params.PSClient.GetSubscription(
+		parentCtxt, receiveSubscription,
+	); err != nil {
 		// Create new subscription
-		log.WithFields(logTags).Warnf("Subscription '%s' is not known. Creating...", receiveSubscription)
-		if err := client.CreateSubscription(
+		log.WithFields(params.LogTags).Warnf("Subscription '%s' is not known. Creating...", receiveSubscription)
+		if err := params.PSClient.CreateSubscription(
 			parentCtxt,
-			clientTargetID,
+			params.TargetID,
 			receiveSubscription,
 			pubsub.SubscriptionConfig{
 				ExpirationPolicy:  time.Hour * 24,
-				RetentionDuration: msgRetentionTTL,
+				RetentionDuration: params.MsgRetentionTTL,
 			},
 		); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(params.LogTags).
 				Errorf("Failed when creating PubSub subscription '%s'", receiveSubscription)
 			workerCtxtCancel()
 			return nil, err
 		}
 	} else {
 		// Use existing subscription
-		log.WithFields(logTags).Infof("Reusing existing subscription '%s'", receiveSubscription)
+		log.WithFields(params.LogTags).Infof("Reusing existing subscription '%s'", receiveSubscription)
 		updatedSubscription := pubsub.SubscriptionConfigToUpdate{
 			PushConfig:                &existingSubscription.PushConfig,
 			BigQueryConfig:            &existingSubscription.BigQueryConfig,
 			AckDeadline:               existingSubscription.AckDeadline,
 			RetainAckedMessages:       existingSubscription.RetainAckedMessages,
-			RetentionDuration:         msgRetentionTTL,
+			RetentionDuration:         params.MsgRetentionTTL,
 			ExpirationPolicy:          time.Hour * 24,
 			DeadLetterPolicy:          existingSubscription.DeadLetterPolicy,
 			Labels:                    existingSubscription.Labels,
 			RetryPolicy:               existingSubscription.RetryPolicy,
 			EnableExactlyOnceDelivery: existingSubscription.EnableExactlyOnceDelivery,
 		}
-		if err := client.UpdateSubscription(
+		if err := params.PSClient.UpdateSubscription(
 			parentCtxt, receiveSubscription, updatedSubscription,
 		); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(params.LogTags).
 				Errorf("Failed when updating PubSub subscription '%s'", receiveSubscription)
 			workerCtxtCancel()
 			return nil, err
@@ -269,37 +291,37 @@ func GetNewPubSubRequestResponseClientInstance(
 
 	// -----------------------------------------------------------------------------------------
 	// Setup support daemon for processing inbound requests
-	procInboundInstanceName := fmt.Sprintf("%s-inbound-process", clientName)
+	procInboundInstanceName := fmt.Sprintf("%s-inbound-process", params.Name)
 	procInboundLogTags := log.Fields{}
-	for lKey, lVal := range logTags {
+	for lKey, lVal := range params.LogTags {
 		procInboundLogTags[lKey] = lVal
 	}
-	procInboundLogTags["module"] = procInboundInstanceName
+	procInboundLogTags["sub-module"] = procInboundInstanceName
 	inboundProcessor, err := GetNewTaskDemuxProcessorInstance(
 		workerContext,
 		procInboundInstanceName,
-		supportWorkerCount*2,
-		supportWorkerCount,
+		params.SupportWorkerCount*2,
+		params.SupportWorkerCount,
 		procInboundLogTags,
 	)
 	if err != nil {
-		log.WithError(err).WithFields(logTags).Error("Unable to define inbound request processor")
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to define inbound request processor")
 		workerCtxtCancel()
 		return nil, err
 	}
 
 	// Setup support daemon for processing outbound requests
-	procOutboundInstanceName := fmt.Sprintf("%s-outbound-process", clientName)
+	procOutboundInstanceName := fmt.Sprintf("%s-outbound-process", params.Name)
 	procOutboundLogTags := log.Fields{}
-	for lKey, lVal := range logTags {
+	for lKey, lVal := range params.LogTags {
 		procOutboundLogTags[lKey] = lVal
 	}
-	procOutboundLogTags["module"] = procOutboundInstanceName
+	procOutboundLogTags["sub-module"] = procOutboundInstanceName
 	outboundProcessor, err := GetNewTaskProcessorInstance(
-		workerContext, procOutboundInstanceName, supportWorkerCount*2, procOutboundLogTags,
+		workerContext, procOutboundInstanceName, params.SupportWorkerCount*2, procOutboundLogTags,
 	)
 	if err != nil {
-		log.WithError(err).WithFields(logTags).Error("Unable to define outbound request processor")
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to define outbound request processor")
 		workerCtxtCancel()
 		return nil, err
 	}
@@ -308,10 +330,11 @@ func GetNewPubSubRequestResponseClientInstance(
 	// Build the component
 	instance := &pubsubReqRespClient{
 		Component: Component{
-			LogTags: logTags, LogTagModifiers: []LogMetadataModifier{modifyLogMetadataByRRRequestParam},
+			LogTags:         params.LogTags,
+			LogTagModifiers: []LogMetadataModifier{modifyLogMetadataByRRRequestParam},
 		},
-		targetID:               clientTargetID,
-		psClient:               client,
+		targetID:               params.TargetID,
+		psClient:               params.PSClient,
 		inboundProcessor:       inboundProcessor,
 		inboundRequestHandler:  nil,
 		outboundProcessor:      outboundProcessor,
@@ -321,8 +344,20 @@ func GetNewPubSubRequestResponseClientInstance(
 		processorContextCancel: workerCtxtCancel,
 		wg:                     sync.WaitGroup{},
 	}
+	timerLogTags := log.Fields{}
+	for lKey, lVal := range params.LogTags {
+		timerLogTags[lKey] = lVal
+	}
+	timerLogTags["sub-module"] = "timeout-enforce-timer"
+	instance.checkTimer, err = GetIntervalTimerInstance(workerContext, &instance.wg, timerLogTags)
+	if err != nil {
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to define request timeout check timer")
+		workerCtxtCancel()
+		return nil, err
+	}
+
 	// Add additional log tag modifiers
-	instance.LogTagModifiers = append(instance.LogTagModifiers, addLogModifiers...)
+	instance.LogTagModifiers = append(instance.LogTagModifiers, params.CustomLogModifiers...)
 
 	// -----------------------------------------------------------------------------------------
 	// Define support tasks for processing outgoing requests
@@ -330,7 +365,7 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := outboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrRequestPayload{}), instance.request,
 	); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Unable to install task definition")
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -338,7 +373,15 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := outboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrInboundResponsePayload{}), instance.receiveInboundResponseMsg,
 	); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Unable to install task definition")
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
+		return nil, err
+	}
+
+	// Trigger request timeout enforcement
+	if err := outboundProcessor.AddToTaskExecutionMap(
+		reflect.TypeOf(rrRequestTimeoutCheckPayload{}), instance.requestTimeoutCheck,
+	); err != nil {
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -348,7 +391,7 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := inboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrInboundRequestPayload{}), instance.receiveInboundRequestMsg,
 	); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Unable to install task definition")
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -356,7 +399,7 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := inboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrResponsePayload{}), instance.respond,
 	); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Unable to install task definition")
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -366,7 +409,7 @@ func GetNewPubSubRequestResponseClientInstance(
 	instance.wg.Add(1)
 	go func() {
 		defer instance.wg.Done()
-		err := client.Subscribe(workerContext, receiveSubscription, instance.ReceivePubSubMsg)
+		err := params.PSClient.Subscribe(workerContext, receiveSubscription, instance.ReceivePubSubMsg)
 		logTags := instance.GetLogTagsForContext(workerContext)
 		if err != nil {
 			log.
@@ -380,11 +423,21 @@ func GetNewPubSubRequestResponseClientInstance(
 	// Start the daemon processors
 
 	if err := outboundProcessor.StartEventLoop(&instance.wg); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Unable to outbound processing task pool")
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to outbound processing task pool")
 		return nil, err
 	}
 	if err := inboundProcessor.StartEventLoop(&instance.wg); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Unable to inbound processing task pool")
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to inbound processing task pool")
+		return nil, err
+	}
+
+	// -----------------------------------------------------------------------------------------
+	// Start the timeout check timer
+
+	if err := instance.checkTimer.Start(params.TimeoutEnforceInt, func() error {
+		return instance.RequestTimeoutCheck(workerContext)
+	}, false); err != nil {
+		log.WithError(err).WithFields(params.LogTags).Error("Unable to start request timeout check timer")
 		return nil, err
 	}
 
@@ -419,6 +472,10 @@ func (c *pubsubReqRespClient) Stop(ctxt context.Context) error {
 	}
 
 	if err := c.outboundProcessor.StopEventLoop(); err != nil {
+		return err
+	}
+
+	if err := c.checkTimer.Stop(); err != nil {
 		return err
 	}
 
@@ -463,6 +520,14 @@ func (c *pubsubReqRespClient) Request(
 
 	requestID := uuid.NewString()
 	currentTime := time.Now().UTC()
+
+	// Sanity check the request parameters
+	if callParam.ExpectedResponsesCount < 1 {
+		return "", fmt.Errorf("request which require no response does not fit supported usage")
+	}
+	if callParam.RespHandler == nil || callParam.TimeoutHandler == nil {
+		return "", fmt.Errorf("request must define all handler callbacks")
+	}
 
 	// Define new outbound request
 	requestEntry := requestContext{
@@ -977,6 +1042,77 @@ func (c *pubsubReqRespClient) handleInboundResponse(params rrInboundResponsePayl
 			// Notify anyone waiting
 			originalReq.completeCallback()
 		}
+	}
+
+	return nil
+}
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Trigger request timeout enforcement
+
+type rrRequestTimeoutCheckPayload struct {
+	timestamp time.Time
+}
+
+// RequestTimeoutCheck execute to enforce request timeout
+func (c *pubsubReqRespClient) RequestTimeoutCheck(ctxt context.Context) error {
+	logTags := c.GetLogTagsForContext(ctxt)
+
+	currentTime := time.Now().UTC()
+
+	log.
+		WithFields(logTags).
+		Info("Submitting request timeout check trigger")
+
+	if err := c.outboundProcessor.Submit(
+		ctxt, rrRequestTimeoutCheckPayload{timestamp: currentTime},
+	); err != nil {
+		log.
+			WithError(err).
+			WithFields(logTags).
+			Error("Failed to submit 'RequestTimeoutCheck' job")
+		return err
+	}
+
+	return nil
+}
+
+func (c *pubsubReqRespClient) requestTimeoutCheck(params interface{}) error {
+	// Convert params into expected data type
+	if requestParams, ok := params.(rrRequestTimeoutCheckPayload); ok {
+		return c.handleRequestTimeoutCheck(requestParams)
+	}
+	err := fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(params))
+	logTags := c.GetLogTagsForContext(c.processorContext)
+	log.WithError(err).WithFields(logTags).Error("'RequestTimeoutCheck' processing failure")
+	return err
+}
+
+// handleRequestTimeoutCheck contains the actual logic for `RequestTimeoutCheck`
+func (c *pubsubReqRespClient) handleRequestTimeoutCheck(params rrRequestTimeoutCheckPayload) error {
+	logTags := c.GetLogTagsForContext(c.parentContext)
+
+	// Go through all the request, and find the ones which have timed out
+	removeRequests := []string{}
+	for requestID, request := range c.outboundRequests {
+		log.WithFields(logTags).Debugf("Checking request %s for timeout", request.String())
+		if request.deadLine.Before(params.timestamp) && request.receivedRespCount < request.expectedRespCount {
+			log.WithFields(logTags).Infof("Request '%s' has timed out", requestID)
+			removeRequests = append(removeRequests, requestID)
+
+			// Notify the original caller that the request timed out
+			if err := request.callParam.TimeoutHandler(c.parentContext); err != nil {
+				log.
+					WithError(err).
+					WithFields(logTags).
+					Errorf("Errored when calling timeout handler of request '%s'", requestID)
+			}
+		}
+	}
+
+	// Remove the request entries
+	for _, requestID := range removeRequests {
+		delete(c.outboundRequests, requestID)
 	}
 
 	return nil
