@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: golint
         uses: Jerome1337/golint-action@v1.0.2
@@ -25,24 +25,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.45.2
+          version: v1.51.2
           args: --timeout 3m0s
 
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v4
         with:
-          go-version: 1.18
+          go-version: "1.20"
 
       - name: Test
-        run: go test --count 1 -v -timeout 600s -short ./...
+        env:
+          UNITTEST_GCP_PROJECT_ID: cicd-389504
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-creds.json
+          GOOGLE_APPLICATION_CREDENTIALS_VAL: ${{ secrets.GOOGLEAPPLICATIONCREDENTIALSVAL }}
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_VAL" > /tmp/gcp-creds.json
+          go test --count 1 -v -timeout 600s -short ./...
