@@ -457,3 +457,72 @@ func TestReqRespRequestTimeoutHandling(t *testing.T) {
 		}
 	}
 }
+
+func TestReqRespSubscriptionReuse(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtxt := context.Background()
+
+	// Create the PubSub clients
+	pubsubClients := []goutils.PubSubClient{}
+	for itr := 0; itr < 2; itr++ {
+		coreClient, err := createTestPubSubClient(utCtxt)
+		assert.Nil(err)
+
+		psClient, err := goutils.GetNewPubSubClientInstance(
+			coreClient, log.Fields{"instance": fmt.Sprintf("ut-ps-client-%d", itr)},
+		)
+		assert.Nil(err)
+
+		assert.Nil(psClient.UpdateLocalTopicCache(utCtxt))
+		assert.Nil(psClient.UpdateLocalSubscriptionCache(utCtxt))
+
+		pubsubClients = append(pubsubClients, psClient)
+	}
+
+	// Create request-response clients
+	rrTopic := fmt.Sprintf("goutil-ut-rr-bo-topic-0-%s", uuid.NewString())
+	uuts := []goutils.RequestResponseClient{}
+	for itr := 0; itr < 2; itr++ {
+		log.Debugf("Re-syncing %d PubSub client", itr)
+		assert.Nil(pubsubClients[itr].UpdateLocalTopicCache(utCtxt))
+		assert.Nil(pubsubClients[itr].UpdateLocalSubscriptionCache(utCtxt))
+		uut, err := goutils.GetNewPubSubRequestResponseClientInstance(
+			utCtxt,
+			goutils.PubSubRequestResponseClientParam{
+				TargetID:           rrTopic,
+				Name:               "ut-client",
+				PSClient:           pubsubClients[itr],
+				MsgRetentionTTL:    time.Minute * 10,
+				LogTags:            log.Fields{"instance": fmt.Sprintf("ut-rr-client-%d", itr)},
+				CustomLogModifiers: nil,
+				SupportWorkerCount: 2,
+				TimeoutEnforceInt:  time.Minute,
+			},
+		)
+		assert.Nil(err)
+		uuts = append(uuts, uut)
+	}
+
+	// =========================================================================================
+
+	// Clean up
+	{
+		// Stop the request-response clients
+		for itr := 0; itr < 2; itr++ {
+			assert.Nil(uuts[itr].Stop(utCtxt))
+		}
+
+		for itr := 0; itr < 2; itr++ {
+			assert.Nil(pubsubClients[itr].Close(utCtxt))
+		}
+
+		// Delete the created subscriptions
+		subscription := fmt.Sprintf("ut-client.%s", rrTopic)
+		assert.Nil(pubsubClients[0].DeleteSubscription(utCtxt, subscription))
+
+		// Delete the created topics
+		assert.Nil(pubsubClients[0].DeleteTopic(utCtxt, rrTopic))
+	}
+}

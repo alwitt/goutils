@@ -241,7 +241,7 @@ func GetNewPubSubRequestResponseClientInstance(
 
 	// Prepare the subscription
 	receiveSubscription := fmt.Sprintf("%s.%s", params.Name, params.TargetID)
-	if existingSubscription, err := params.PSClient.GetSubscription(
+	if _, err := params.PSClient.GetSubscription(
 		parentCtxt, receiveSubscription,
 	); err != nil {
 		// Create new subscription
@@ -266,16 +266,8 @@ func GetNewPubSubRequestResponseClientInstance(
 		// Use existing subscription
 		log.WithFields(params.LogTags).Infof("Reusing existing subscription '%s'", receiveSubscription)
 		updatedSubscription := pubsub.SubscriptionConfigToUpdate{
-			PushConfig:                &existingSubscription.PushConfig,
-			BigQueryConfig:            &existingSubscription.BigQueryConfig,
-			AckDeadline:               existingSubscription.AckDeadline,
-			RetainAckedMessages:       existingSubscription.RetainAckedMessages,
-			RetentionDuration:         params.MsgRetentionTTL,
-			ExpirationPolicy:          time.Hour * 24,
-			DeadLetterPolicy:          existingSubscription.DeadLetterPolicy,
-			Labels:                    existingSubscription.Labels,
-			RetryPolicy:               existingSubscription.RetryPolicy,
-			EnableExactlyOnceDelivery: existingSubscription.EnableExactlyOnceDelivery,
+			RetentionDuration: params.MsgRetentionTTL,
+			ExpirationPolicy:  time.Hour * 24,
 		}
 		if err := params.PSClient.UpdateSubscription(
 			parentCtxt, receiveSubscription, updatedSubscription,
