@@ -533,3 +533,38 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 	assert.Nil(uut.DeleteSubscription(utCtxt, testSubscription1))
 	assert.Nil(uut.DeleteTopic(utCtxt, testTopic))
 }
+
+func TestPubSubDynamicTopicCacheUpdate(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtxt := context.Background()
+
+	coreClient, err := createTestPubSubClient(utCtxt)
+	assert.Nil(err)
+
+	uut0, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-0"})
+	assert.Nil(err)
+
+	// Create test topic
+	testTopic1 := fmt.Sprintf("goutil-ut-topic-6-%s", uuid.NewString())
+	assert.Nil(uut0.CreateTopic(
+		utCtxt, testTopic1, &pubsub.TopicConfig{RetentionDuration: time.Minute * 10},
+	))
+
+	// Define a different client
+	uut1, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-1"})
+	assert.Nil(err)
+
+	// Publish on topic created by first client
+	_, err = uut1.Publish(utCtxt, testTopic1, []byte(uuid.NewString()), nil, true)
+	assert.Nil(err)
+
+	// Publish on completely unknown topic
+	testTopic2 := fmt.Sprintf("goutil-ut-topic-6-%s", uuid.NewString())
+	_, err = uut1.Publish(utCtxt, testTopic2, []byte(uuid.NewString()), nil, true)
+	assert.NotNil(err)
+
+	// Clean up
+	assert.Nil(uut0.DeleteTopic(utCtxt, testTopic1))
+}

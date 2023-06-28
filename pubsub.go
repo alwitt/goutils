@@ -185,15 +185,9 @@ func GetNewPubSubClientInstance(client *pubsub.Client, logTags log.Fields) (PubS
 // ==========================================================================================
 // Maintenance
 
-/*
-UpdateLocalTopicCache sync local topic cache with existing topics in project
-
-	@param ctxt context.Context - execution context
-*/
-func (p *pubsubClientImpl) UpdateLocalTopicCache(ctxt context.Context) error {
+// updateLocalTopicCacheCore independent function for updating local topic cache for reuse
+func (p *pubsubClientImpl) updateLocalTopicCacheCore(ctxt context.Context) error {
 	logTag := p.GetLogTagsForContext(ctxt)
-	p.topicLock.Lock()
-	defer p.topicLock.Unlock()
 	topicItr := p.client.Topics(ctxt)
 	for {
 		topicEntry, err := topicItr.Next()
@@ -208,6 +202,17 @@ func (p *pubsubClientImpl) UpdateLocalTopicCache(ctxt context.Context) error {
 		log.WithFields(logTag).Debugf("Found topic '%s'", topicEntry.ID())
 	}
 	return nil
+}
+
+/*
+UpdateLocalTopicCache sync local topic cache with existing topics in project
+
+	@param ctxt context.Context - execution context
+*/
+func (p *pubsubClientImpl) UpdateLocalTopicCache(ctxt context.Context) error {
+	p.topicLock.Lock()
+	defer p.topicLock.Unlock()
+	return p.updateLocalTopicCacheCore(ctxt)
 }
 
 /*
@@ -293,6 +298,35 @@ func (p *pubsubClientImpl) CreateTopic(
 	return nil
 }
 
+// getTopicHandle get topic handle
+func (p *pubsubClientImpl) getTopicHandle(
+	ctxt context.Context, topic string, doLock bool,
+) (*pubsub.Topic, error) {
+	logTag := p.GetLogTagsForContext(ctxt)
+
+	if doLock {
+		p.topicLock.RLock()
+		defer p.topicLock.RUnlock()
+	}
+
+	t, ok := p.topics[topic]
+	if !ok {
+		// Update the local topic cache
+		if err := p.updateLocalTopicCacheCore(ctxt); err != nil {
+			log.WithError(err).WithFields(logTag).Error("Failed syncing local topic cache")
+			return nil, err
+		}
+
+		t, ok = p.topics[topic]
+		if !ok {
+			// Topic is really missing
+			err := fmt.Errorf("topic '%s' is unknown", topic)
+			return nil, err
+		}
+	}
+	return t, nil
+}
+
 /*
 DeleteTopic delete PubSub topic
 
@@ -305,9 +339,8 @@ func (p *pubsubClientImpl) DeleteTopic(ctxt context.Context, topic string) error
 
 	logTag := p.GetLogTagsForContext(ctxt)
 
-	topicHandle, ok := p.topics[topic]
-	if !ok {
-		err := fmt.Errorf("this instance does know of topic '%s'", topic)
+	topicHandle, err := p.getTopicHandle(ctxt, topic, false)
+	if err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Unable to delete topic '%s'", topic)
 		return err
 	}
@@ -336,14 +369,13 @@ GetTopic get the topic config for a topic
 	@returns if topic is known, the topic config
 */
 func (p *pubsubClientImpl) GetTopic(ctxt context.Context, topic string) (pubsub.TopicConfig, error) {
-	p.topicLock.Lock()
-	defer p.topicLock.Unlock()
+	p.topicLock.RLock()
+	defer p.topicLock.RUnlock()
 
 	logTag := p.GetLogTagsForContext(ctxt)
 
-	topicHandle, ok := p.topics[topic]
-	if !ok {
-		err := fmt.Errorf("this instance does know of topic '%s'", topic)
+	topicHandle, err := p.getTopicHandle(ctxt, topic, false)
+	if err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Unable to find topic '%s'", topic)
 		return pubsub.TopicConfig{}, err
 	}
@@ -374,9 +406,8 @@ func (p *pubsubClientImpl) UpdateTopic(
 
 	logTag := p.GetLogTagsForContext(ctxt)
 
-	topicHandle, ok := p.topics[topic]
-	if !ok {
-		err := fmt.Errorf("this instance does know of topic '%s'", topic)
+	topicHandle, err := p.getTopicHandle(ctxt, topic, false)
+	if err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Unable to find topic '%s'", topic)
 		return err
 	}
@@ -407,24 +438,11 @@ func (p *pubsubClientImpl) CreateSubscription(
 ) error {
 	logTag := p.GetLogTagsForContext(ctxt)
 
-	var topic *pubsub.Topic
-
-	// Grab the topic object
-	{
-		p.topicLock.Lock()
-		defer p.topicLock.Unlock()
-
-		t, ok := p.topics[targetTopic]
-		if !ok {
-			err := fmt.Errorf("topic '%s' is unknown", targetTopic)
-			log.
-				WithError(err).
-				WithFields(logTag).
-				Errorf("Unable to create subscription '%s'", subscription)
-			return err
-		}
-
-		topic = t
+	// Get the topic handle
+	topic, err := p.getTopicHandle(ctxt, targetTopic, true)
+	if err != nil {
+		log.WithError(err).WithFields(logTag).Errorf("Unable to create subscription '%s'", subscription)
+		return err
 	}
 
 	// Create the subscription
@@ -556,19 +574,6 @@ func (p *pubsubClientImpl) UpdateSubscription(
 // ==========================================================================================
 // Message Passing
 
-// getTopicHandle get topic handle
-func (p *pubsubClientImpl) getTopicHandle(ctxt context.Context, topic string) (*pubsub.Topic, error) {
-	p.topicLock.RLock()
-	defer p.topicLock.RUnlock()
-
-	t, ok := p.topics[topic]
-	if !ok {
-		err := fmt.Errorf("topic '%s' is unknown", topic)
-		return nil, err
-	}
-	return t, nil
-}
-
 /*
 Publish publish a message to a topic
 
@@ -585,7 +590,7 @@ func (p *pubsubClientImpl) Publish(
 	logTag := p.GetLogTagsForContext(ctxt)
 
 	// Get the topic handle
-	topicHandle, err := p.getTopicHandle(ctxt, topic)
+	topicHandle, err := p.getTopicHandle(ctxt, topic, true)
 	if err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Publish on topic '%s' failed", topic)
 		return nil, err
