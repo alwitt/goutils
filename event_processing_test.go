@@ -80,6 +80,14 @@ func TestTaskDemuxProcessing(t *testing.T) {
 	defer wg.Wait()
 	ctxt, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	{
+		_, err := GetNewTaskDemuxProcessorInstance(
+			ctxt, "testing", 4, 0, log.Fields{"instance": "unit-tester"},
+		)
+		assert.NotNil(err)
+	}
+
 	uut, err := GetNewTaskDemuxProcessorInstance(
 		ctxt, "testing", 4, 3, log.Fields{"instance": "unit-tester"},
 	)
