@@ -144,3 +144,15 @@ func TimeBoundedWaitGroupWait(
 		return fmt.Errorf("wait-group wait timed out")
 	}
 }
+
+// ======================================================================================
+
+// HTTPRequestRetryParam HTTP client request retry parameters
+type HTTPRequestRetryParam struct {
+	// MaxRetires maximum number of retries
+	MaxRetires int
+	// InitialWaitTime the initial retry wait time
+	InitialWaitTime time.Duration
+	// MaxWaitTime the max retry wait time
+	MaxWaitTime time.Duration
+}
