@@ -32,6 +32,7 @@ func TestRestAPIHanderRequestIDInjection(t *testing.T) {
 			},
 		},
 		CallRequestIDHeaderField: nil,
+		LogLevel:                 goutils.HTTPLogLevelDEBUG,
 	}
 	{
 		rid := uuid.New().String()
@@ -68,6 +69,7 @@ func TestRestAPIHanderRequestIDInjection(t *testing.T) {
 			},
 		},
 		CallRequestIDHeaderField: &testReqIDHeader,
+		LogLevel:                 goutils.HTTPLogLevelINFO,
 	}
 	{
 		rid := uuid.New().String()
@@ -107,6 +109,7 @@ func TestRestAPIHandlerRequestLogging(t *testing.T) {
 			},
 		},
 		DoNotLogHeaders: map[string]bool{"Not-Allowed": true},
+		LogLevel:        goutils.HTTPLogLevelDEBUG,
 	}
 	{
 		value1 := uuid.New().String()
@@ -149,6 +152,7 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 			},
 		},
 		CallRequestIDHeaderField: &testReqIDHeader,
+		LogLevel:                 goutils.HTTPLogLevelDEBUG,
 	}
 
 	type testMessage struct {
