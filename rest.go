@@ -12,6 +12,16 @@ import (
 	"github.com/urfave/negroni"
 )
 
+// HTTPRequestLogLevel HTTP request log level data type
+type HTTPRequestLogLevel string
+
+// HTTP request log levels
+const (
+	HTTPLogLevelWARN  HTTPRequestLogLevel = "warn"
+	HTTPLogLevelINFO  HTTPRequestLogLevel = "info"
+	HTTPLogLevelDEBUG HTTPRequestLogLevel = "debug"
+)
+
 // RestAPIHandler base REST API handler
 type RestAPIHandler struct {
 	Component
@@ -19,6 +29,8 @@ type RestAPIHandler struct {
 	CallRequestIDHeaderField *string
 	// DoNotLogHeaders marks the set of HTTP headers to not log
 	DoNotLogHeaders map[string]bool
+	// LogLevel configure the request logging level
+	LogLevel HTTPRequestLogLevel
 }
 
 // ErrorDetail is the response detail in case of error
@@ -100,24 +112,54 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 		logTags := h.GetLogTagsForContext(ctxt)
 		respLen := newRespWriter.Size()
 		respCode := newRespWriter.Status()
-		log.WithFields(logTags).
+		// Log level based on config
+		logHandle := log.WithFields(logTags).
 			WithField("response_code", respCode).
 			WithField("response_size", respLen).
-			WithField("response_timestamp", respTimestamp.UTC().Format(time.RFC3339Nano)).
-			Warn(
-				fmt.Sprintf(
-					"%s - - [%s] \"%s %s %s\" %d %d %s %s",
-					params.RemoteAddr,
-					params.Timestamp.UTC().Format(time.RFC3339Nano),
-					params.Method,
-					params.URI,
-					params.Proto,
-					respCode,
-					respLen,
-					requestReferer,
-					userAgentString,
-				),
+			WithField("response_timestamp", respTimestamp.UTC().Format(time.RFC3339Nano))
+		switch h.LogLevel {
+		case HTTPLogLevelDEBUG:
+			logHandle.Debugf(
+				"%s - - [%s] \"%s %s %s\" %d %d %s %s",
+				params.RemoteAddr,
+				params.Timestamp.UTC().Format(time.RFC3339Nano),
+				params.Method,
+				params.URI,
+				params.Proto,
+				respCode,
+				respLen,
+				requestReferer,
+				userAgentString,
 			)
+
+		case HTTPLogLevelINFO:
+			logHandle.Infof(
+				"%s - - [%s] \"%s %s %s\" %d %d %s %s",
+				params.RemoteAddr,
+				params.Timestamp.UTC().Format(time.RFC3339Nano),
+				params.Method,
+				params.URI,
+				params.Proto,
+				respCode,
+				respLen,
+				requestReferer,
+				userAgentString,
+			)
+
+		default:
+			logHandle.Warnf(
+				"%s - - [%s] \"%s %s %s\" %d %d %s %s",
+				params.RemoteAddr,
+				params.Timestamp.UTC().Format(time.RFC3339Nano),
+				params.Method,
+				params.URI,
+				params.Proto,
+				respCode,
+				respLen,
+				requestReferer,
+				userAgentString,
+			)
+		}
 	}
 }
 
