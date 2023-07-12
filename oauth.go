@@ -53,7 +53,7 @@ type OAuthTokenManager interface {
 // clientCredOAuthTokenManager client credential flow oauth token manager
 type clientCredOAuthTokenManager struct {
 	Component
-	httpClient       resty.Client
+	httpClient       *resty.Client
 	tasks            TaskProcessor
 	clientID         string
 	clientSecret     string
@@ -87,13 +87,13 @@ type ClientCredOAuthTokenManagerParam struct {
 GetNewClientCredOAuthTokenManager get client credential flow oauth token manager
 
 	@param parentCtxt context.Context - parent context
-	@param httpClient resty.Client - use this HTTP client to interact with the IDP
+	@param httpClient *resty.Client - use this HTTP client to interact with the IDP
 	@param params ClientCredOAuthTokenManagerParam - configuration for the token manager
 	@returns new OAuthTokenManager instance
 */
 func GetNewClientCredOAuthTokenManager(
 	parentCtxt context.Context,
-	httpClient resty.Client,
+	httpClient *resty.Client,
 	params ClientCredOAuthTokenManagerParam,
 ) (OAuthTokenManager, error) {
 	validate := validator.New()

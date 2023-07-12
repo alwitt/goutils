@@ -57,7 +57,7 @@ func TestClientCredOAuthTokenManager(t *testing.T) {
 		},
 	)
 
-	uut, err := goutils.GetNewClientCredOAuthTokenManager(utCtxt, *testClient, testCfg)
+	uut, err := goutils.GetNewClientCredOAuthTokenManager(utCtxt, testClient, testCfg)
 	assert.Nil(err)
 
 	currentTime := time.Now().UTC()
