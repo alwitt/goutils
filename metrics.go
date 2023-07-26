@@ -22,25 +22,80 @@ const (
 	//
 	// - method: [GET, PUT, POST, DELETE, HEAD, PATCH, OPTIONS]
 	//
-	// - HTTP version
-	//
 	// - status code ENUM: [2XX, 3XX, 4XX, 5XX+]
 	metricsNameHTTPRequest = "http_request_total"
 
-	// metricsNameHTTPRequestLatency HTTP request latency tracking
+	// metricsNameHTTPRequestLatency HTTP request latency tracking. Additional parameters are
+	// attached via labels
+	//
+	// - method: [GET, PUT, POST, DELETE, HEAD, PATCH, OPTIONS]
+	//
+	// - status code ENUM: [2XX, 3XX, 4XX, 5XX+]
 	metricsNameHTTPRequestLatency = "http_request_latency_secs_total"
 
-	// metricsNameHTTPResponseSize HTTP response size tracking
+	// metricsNameHTTPResponseSize HTTP response size tracking. Additional parameters are
+	// attached via labels
+	//
+	// - method: [GET, PUT, POST, DELETE, HEAD, PATCH, OPTIONS]
+	//
+	// - status code ENUM: [2XX, 3XX, 4XX, 5XX+]
 	metricsNameHTTPResponseSize = "http_response_size_bytes_total"
+
+	// ====================================================================================
+	// PubSub
+
+	// metricsNamePubSubPublish PubSub publish tracking. Additional parameters are attached
+	// via labels
+	//
+	// - topic
+	//
+	// - success
+	metricsNamePubSubPublish = "pubsub_publish_total"
+
+	// metricsNamePubSubPublishPayloadSize PubSub publish message size tracking. Additional
+	// parameters are attached via labels
+	//
+	// - topic
+	//
+	// - success
+	metricsNamePubSubPublishPayloadSize = "pubsub_publish_payload_size_bytes_total"
+
+	// metricsNamePubSubReceive PubSub receive message tracking. Additional parameters are
+	// attacked via labels
+	//
+	// - topic
+	//
+	// - success
+	metricsNamePubSubReceive = "pubsub_receive_total"
+
+	// metricsNamePubSubReceivePayloadSize PubSub receive message size tracking. Additional
+	// parameters are attached via labels
+	//
+	// - topic
+	//
+	// - success
+	metricsNamePubSubReceivePayloadSize = "pubsub_receive_payload_size_bytes_total"
 )
 
 // Standard metrics labels provided with the package
 const (
+	// ====================================================================================
+	// HTTP
+
 	// labelNameHTTPMethod HTTP request method label name
 	labelNameHTTPMethod = "method"
 
 	// labelNameHTTPStatus HTTP status label name
 	labelNameHTTPStatus = "status"
+
+	// ====================================================================================
+	// PubSub
+
+	// labelNamePubSubTopic PubSub topic label name
+	labelNamePubSubTopic = "topic"
+
+	// labelNamePubSubSuccess whether processing is successful or not
+	labelNamePubSubSuccess = "success"
 )
 
 // MetricsCollector metrics collection support client
@@ -59,6 +114,14 @@ type MetricsCollector interface {
 	InstallHTTPMetrics() HTTPRequestMetricHelper
 
 	/*
+		InstallPubSubMetrics install trackers for PubSub messaging collection. This will return
+		a helper agent to record the metrics.
+
+			@return PubSub metrics logging agent
+	*/
+	InstallPubSubMetrics() PubSubMetricHelper
+
+	/*
 		ExposeCollectionEndpoint expose the Prometheus metric collection endpoint
 
 			@param outer *mux.Router - HTTP router to install endpoint on
@@ -71,9 +134,10 @@ type MetricsCollector interface {
 // metricsCollectorImpl implements MetricsCollector
 type metricsCollectorImpl struct {
 	Component
-	lock        sync.Mutex
-	prometheus  *prometheus.Registry
-	httpMetrics HTTPRequestMetricHelper
+	lock          sync.Mutex
+	prometheus    *prometheus.Registry
+	httpMetrics   HTTPRequestMetricHelper
+	pubsubMetrics PubSubMetricHelper
 }
 
 /*
@@ -149,6 +213,54 @@ func (c *metricsCollectorImpl) InstallHTTPMetrics() HTTPRequestMetricHelper {
 	return c.httpMetrics
 }
 
+func (c *metricsCollectorImpl) InstallPubSubMetrics() PubSubMetricHelper {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if c.pubsubMetrics != nil {
+		return c.pubsubMetrics
+	}
+
+	publishTracker := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: metricsNamePubSubPublish,
+			Help: "PubSub publish tracking",
+		},
+		[]string{labelNamePubSubTopic, labelNamePubSubSuccess},
+	)
+	publishPayloadTracker := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: metricsNamePubSubPublishPayloadSize,
+			Help: "PubSub publish message size tracking",
+		},
+		[]string{labelNamePubSubTopic, labelNamePubSubSuccess},
+	)
+	receiveTracker := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: metricsNamePubSubReceive,
+			Help: "PubSub receive message tracking",
+		},
+		[]string{labelNamePubSubTopic, labelNamePubSubSuccess},
+	)
+	receivePayloadTracker := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: metricsNamePubSubReceivePayloadSize,
+			Help: "PubSub receive message size tracking",
+		},
+		[]string{labelNamePubSubTopic, labelNamePubSubSuccess},
+	)
+	c.prometheus.MustRegister(
+		publishTracker, publishPayloadTracker, receiveTracker, receivePayloadTracker,
+	)
+	c.pubsubMetrics = &pubsubMetricHelperImpl{
+		publishTracker:        publishTracker,
+		publishPayloadTracker: publishPayloadTracker,
+		receiveTracker:        receiveTracker,
+		receivePayloadTracker: receivePayloadTracker,
+	}
+	return c.pubsubMetrics
+}
+
 func (c *metricsCollectorImpl) ExposeCollectionEndpoint(
 	router *mux.Router, metricsPath string, maxSupportedRequest int,
 ) {
@@ -216,4 +328,60 @@ func httpRespCodeToMetricLabel(status int) string {
 		return "3XX"
 	}
 	return "2XX"
+}
+
+/*
+PubSubMetricHelper PubSub publish and receive metric recording helper agent
+*/
+type PubSubMetricHelper interface {
+	/*
+		RecordPublish record PubSub publish message
+
+			@param topic string - PubSub topic
+			@param successful bool - whether the operation was successful
+			@param payloadLen int64 - publish payload length
+	*/
+	RecordPublish(topic string, successful bool, payloadLen int64)
+
+	/*
+		RecordReceive record PubSub receive message
+
+			@param topic string - PubSub topic
+			@param successful bool - whether the operation was successful
+			@param payloadLen int64 - receive payload length
+	*/
+	RecordReceive(topic string, successful bool, payloadLen int64)
+}
+
+type pubsubMetricHelperImpl struct {
+	publishTracker        *prometheus.CounterVec
+	publishPayloadTracker *prometheus.CounterVec
+	receiveTracker        *prometheus.CounterVec
+	receivePayloadTracker *prometheus.CounterVec
+}
+
+func (t *pubsubMetricHelperImpl) RecordPublish(topic string, successful bool, payloadLen int64) {
+	successStr := "true"
+	if !successful {
+		successStr = "false"
+	}
+	t.publishTracker.
+		With(prometheus.Labels{labelNamePubSubTopic: topic, labelNamePubSubSuccess: successStr}).
+		Inc()
+	t.publishPayloadTracker.
+		With(prometheus.Labels{labelNamePubSubTopic: topic, labelNamePubSubSuccess: successStr}).
+		Add(float64(payloadLen))
+}
+
+func (t *pubsubMetricHelperImpl) RecordReceive(topic string, successful bool, payloadLen int64) {
+	successStr := "true"
+	if !successful {
+		successStr = "false"
+	}
+	t.receiveTracker.
+		With(prometheus.Labels{labelNamePubSubTopic: topic, labelNamePubSubSuccess: successStr}).
+		Inc()
+	t.receivePayloadTracker.
+		With(prometheus.Labels{labelNamePubSubTopic: topic, labelNamePubSubSuccess: successStr}).
+		Add(float64(payloadLen))
 }

@@ -26,7 +26,7 @@ func TestReqRespBasicOperation(t *testing.T) {
 		assert.Nil(err)
 
 		psClient, err := goutils.GetNewPubSubClientInstance(
-			coreClient, log.Fields{"instance": fmt.Sprintf("ut-ps-client-%d", itr)},
+			coreClient, log.Fields{"instance": fmt.Sprintf("ut-ps-client-%d", itr)}, nil,
 		)
 		assert.Nil(err)
 
@@ -252,7 +252,7 @@ func TestReqRespRequestTimeoutHandling(t *testing.T) {
 		assert.Nil(err)
 
 		psClient, err := goutils.GetNewPubSubClientInstance(
-			coreClient, log.Fields{"instance": fmt.Sprintf("ut-ps-client-%d", itr)},
+			coreClient, log.Fields{"instance": fmt.Sprintf("ut-ps-client-%d", itr)}, nil,
 		)
 		assert.Nil(err)
 
@@ -471,7 +471,7 @@ func TestReqRespSubscriptionReuse(t *testing.T) {
 		assert.Nil(err)
 
 		psClient, err := goutils.GetNewPubSubClientInstance(
-			coreClient, log.Fields{"instance": fmt.Sprintf("ut-ps-client-%d", itr)},
+			coreClient, log.Fields{"instance": fmt.Sprintf("ut-ps-client-%d", itr)}, nil,
 		)
 		assert.Nil(err)
 

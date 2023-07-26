@@ -16,7 +16,9 @@ import (
 	"google.golang.org/api/option"
 )
 
-func createPubSubClientUsingAPIToken(ctxt context.Context, projectID string, token string) (*pubsub.Client, error) {
+func createPubSubClientUsingAPIToken(
+	ctxt context.Context, projectID string, token string,
+) (*pubsub.Client, error) {
 	return pubsub.NewClient(ctxt, projectID, option.WithAPIKey(token))
 }
 
@@ -39,7 +41,9 @@ func TestPubSubTopicCRUD(t *testing.T) {
 	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
-	uut, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
+	uut, err := goutils.GetNewPubSubClientInstance(
+		coreClient, log.Fields{"instance": "unit-tester"}, nil,
+	)
 	assert.Nil(err)
 
 	assert.Nil(uut.UpdateLocalTopicCache(utCtxt))
@@ -109,10 +113,14 @@ func TestPubSubTopicSync(t *testing.T) {
 	coreClient1, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
-	uut0, err := goutils.GetNewPubSubClientInstance(coreClient0, log.Fields{"instance": "unit-tester-0"})
+	uut0, err := goutils.GetNewPubSubClientInstance(
+		coreClient0, log.Fields{"instance": "unit-tester-0"}, nil,
+	)
 	assert.Nil(err)
 
-	uut1, err := goutils.GetNewPubSubClientInstance(coreClient1, log.Fields{"instance": "unit-tester-1"})
+	uut1, err := goutils.GetNewPubSubClientInstance(
+		coreClient1, log.Fields{"instance": "unit-tester-1"}, nil,
+	)
 	assert.Nil(err)
 
 	// Create new topic
@@ -143,7 +151,9 @@ func TestPubSubSubscriptionCRUD(t *testing.T) {
 	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
-	uut, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
+	uut, err := goutils.GetNewPubSubClientInstance(
+		coreClient, log.Fields{"instance": "unit-tester"}, nil,
+	)
 	assert.Nil(err)
 
 	assert.Nil(uut.UpdateLocalTopicCache(utCtxt))
@@ -217,7 +227,9 @@ func TestPubSubDataPassing(t *testing.T) {
 	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
-	uut, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
+	uut, err := goutils.GetNewPubSubClientInstance(
+		coreClient, log.Fields{"instance": "unit-tester"}, nil,
+	)
 	assert.Nil(err)
 
 	assert.Nil(uut.UpdateLocalTopicCache(utCtxt))
@@ -307,7 +319,9 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
-	uut0, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-0"})
+	uut0, err := goutils.GetNewPubSubClientInstance(
+		coreClient, log.Fields{"instance": "unit-tester-0"}, nil,
+	)
 	assert.Nil(err)
 
 	assert.Nil(uut0.UpdateLocalTopicCache(utCtxt))
@@ -327,7 +341,9 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 	}))
 
 	// Create second client
-	uut1, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-1"})
+	uut1, err := goutils.GetNewPubSubClientInstance(
+		coreClient, log.Fields{"instance": "unit-tester-1"}, nil,
+	)
 	assert.Nil(err)
 	assert.Nil(uut1.UpdateLocalTopicCache(utCtxt))
 	assert.Nil(uut1.UpdateLocalSubscriptionCache(utCtxt))
@@ -428,7 +444,9 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
-	uut, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester"})
+	uut, err := goutils.GetNewPubSubClientInstance(
+		coreClient, log.Fields{"instance": "unit-tester"}, nil,
+	)
 	assert.Nil(err)
 
 	assert.Nil(uut.UpdateLocalTopicCache(utCtxt))
@@ -543,7 +561,9 @@ func TestPubSubDynamicTopicCacheUpdate(t *testing.T) {
 	coreClient, err := createTestPubSubClient(utCtxt)
 	assert.Nil(err)
 
-	uut0, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-0"})
+	uut0, err := goutils.GetNewPubSubClientInstance(
+		coreClient, log.Fields{"instance": "unit-tester-0"}, nil,
+	)
 	assert.Nil(err)
 
 	// Create test topic
@@ -553,7 +573,9 @@ func TestPubSubDynamicTopicCacheUpdate(t *testing.T) {
 	))
 
 	// Define a different client
-	uut1, err := goutils.GetNewPubSubClientInstance(coreClient, log.Fields{"instance": "unit-tester-1"})
+	uut1, err := goutils.GetNewPubSubClientInstance(
+		coreClient, log.Fields{"instance": "unit-tester-1"}, nil,
+	)
 	assert.Nil(err)
 
 	// Publish on topic created by first client

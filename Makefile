@@ -1,3 +1,5 @@
+SHELL = bash
+
 all: lint
 
 .PHONY: lint
@@ -13,11 +15,11 @@ fix: .prepare ## Lint and fix vialoations
 
 .PHONY: test
 test: .prepare ## Run unittests
-	@go test --count 1 -v -timeout 300s -short ./...
+	. .env; go test --count 1 -v -timeout 300s -short ./...
 
 .PHONY: one-test
 one-test: .prepare ## Run one unittest
-	@go test --count 1 -v -timeout 30s -run ^$(FILTER) github.com/alwitt/goutils/...
+	. .env; go test --count 1 -v -timeout 30s -run ^$(FILTER) github.com/alwitt/goutils/...
 
 .prepare: ## Prepare the project for local development
 	@pip3 install --user pre-commit

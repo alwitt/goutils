@@ -162,6 +162,7 @@ type pubsubClientImpl struct {
 	topics        map[string]*pubsub.Topic
 	subLock       sync.RWMutex
 	subscriptions map[string]*pubsub.Subscription
+	metricsHelper PubSubMetricHelper
 }
 
 /*
@@ -169,9 +170,12 @@ GetNewPubSubClientInstance get PubSub wrapper client
 
 	@param client *pubsub.Client - core PubSub client
 	@param logTags log.Fields - metadata fields to include in the logs
+	@param metricsHelper PubSubMetricHelper - metric collection helper agent
 	@returns new PubSubClient instance
 */
-func GetNewPubSubClientInstance(client *pubsub.Client, logTags log.Fields) (PubSubClient, error) {
+func GetNewPubSubClientInstance(
+	client *pubsub.Client, logTags log.Fields, metricsHelper PubSubMetricHelper,
+) (PubSubClient, error) {
 	return &pubsubClientImpl{
 		Component:     Component{LogTags: logTags},
 		client:        client,
@@ -179,6 +183,7 @@ func GetNewPubSubClientInstance(client *pubsub.Client, logTags log.Fields) (PubS
 		topics:        make(map[string]*pubsub.Topic),
 		subLock:       sync.RWMutex{},
 		subscriptions: make(map[string]*pubsub.Subscription),
+		metricsHelper: metricsHelper,
 	}, nil
 }
 
@@ -593,6 +598,9 @@ func (p *pubsubClientImpl) Publish(
 	topicHandle, err := p.getTopicHandle(ctxt, topic, true)
 	if err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Publish on topic '%s' failed", topic)
+		if p.metricsHelper != nil {
+			p.metricsHelper.RecordPublish(topic, false, int64(len(message)))
+		}
 		return nil, err
 	}
 
@@ -604,11 +612,18 @@ func (p *pubsubClientImpl) Publish(
 		txID, err := txHandle.Get(ctxt)
 		if err != nil {
 			log.WithError(err).WithFields(logTag).Errorf("Publish on topic '%s' failed", topic)
+			if p.metricsHelper != nil {
+				p.metricsHelper.RecordPublish(topic, false, int64(len(message)))
+			}
 			return nil, err
 		}
 		log.WithFields(logTag).Debugf("Published message [%s] on topic '%s'", txID, topic)
 	} else {
 		log.WithFields(logTag).Debugf("Published message on topic '%s'", topic)
+	}
+
+	if p.metricsHelper != nil {
+		p.metricsHelper.RecordPublish(topic, true, int64(len(message)))
 	}
 	return txHandle, nil
 }
@@ -648,21 +663,38 @@ func (p *pubsubClientImpl) Subscribe(
 		return err
 	}
 
+	// Get the associated topic handle
+	subConfig, err := subscriptionHandle.Config(ctxt)
+	if err != nil {
+		log.WithError(err).WithFields(logTag).Errorf("Listen on subscription '%s' failed", subscription)
+		return err
+	}
+
+	topicHandle := subConfig.Topic
+
 	// Install subscription receive
 	if err := subscriptionHandle.Receive(ctxt, func(ctx context.Context, m *pubsub.Message) {
 		if err := handler(ctx, m.PublishTime, m.Data, m.Attributes); err != nil {
 			log.
 				WithError(err).
 				WithFields(logTag).
+				WithField("topic", topicHandle.ID()).
 				WithField("subscription", subscription).
 				Errorf("Failed to process message [%s]", m.ID)
+			if p.metricsHelper != nil {
+				p.metricsHelper.RecordReceive(topicHandle.ID(), false, int64(len(m.Data)))
+			}
 			m.Nack()
 		} else {
 			log.
 				WithError(err).
 				WithFields(logTag).
+				WithField("topic", topicHandle.ID()).
 				WithField("subscription", subscription).
 				Debugf("Processed message [%s]", m.ID)
+			if p.metricsHelper != nil {
+				p.metricsHelper.RecordReceive(topicHandle.ID(), true, int64(len(m.Data)))
+			}
 			m.Ack()
 		}
 	}); err != nil {

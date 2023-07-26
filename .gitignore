@@ -2,3 +2,4 @@
 padlock
 tmp/
 docs/swagger.*
+.env
