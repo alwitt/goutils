@@ -1,6 +1,7 @@
 package goutils
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"sync"
@@ -120,6 +121,32 @@ type MetricsCollector interface {
 			@return PubSub metrics logging agent
 	*/
 	InstallPubSubMetrics() PubSubMetricHelper
+
+	/*
+		InstallCustomCounterVecMetrics install new custom `CounterVec` metrics
+
+			@param ctxt context.Context - execution context
+			@param metricsName string - metrics name
+			@param metricsHelpMessage string - metrics help message
+			@param metricsLabels []string - labels to support
+			@returns new `CounterVec` handle
+	*/
+	InstallCustomCounterVecMetrics(
+		ctxt context.Context, metricsName string, metricsHelpMessage string, metricsLabels []string,
+	) (*prometheus.CounterVec, error)
+
+	/*
+		InstallCustomGaugeVecMetrics install new custom `GaugeVec` metrics
+
+			@param ctxt context.Context - execution context
+			@param metricsName string - metrics name
+			@param metricsHelpMessage string - metrics help message
+			@param metricsLabels []string - labels to support
+			@returns new `GaugeVec` handle
+	*/
+	InstallCustomGaugeVecMetrics(
+		ctxt context.Context, metricsName string, metricsHelpMessage string, metricsLabels []string,
+	) (*prometheus.GaugeVec, error)
 
 	/*
 		ExposeCollectionEndpoint expose the Prometheus metric collection endpoint
@@ -261,6 +288,40 @@ func (c *metricsCollectorImpl) InstallPubSubMetrics() PubSubMetricHelper {
 	return c.pubsubMetrics
 }
 
+func (c *metricsCollectorImpl) InstallCustomCounterVecMetrics(
+	ctxt context.Context, metricsName string, metricsHelpMessage string, metricsLabels []string,
+) (*prometheus.CounterVec, error) {
+	logTags := c.GetLogTagsForContext(ctxt)
+	newMetricsTracker := prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: metricsName, Help: metricsHelpMessage}, metricsLabels,
+	)
+	if err := c.prometheus.Register(newMetricsTracker); err != nil {
+		log.
+			WithError(err).
+			WithFields(logTags).
+			Errorf("Failed to register new metrics '%s'", metricsName)
+		return nil, err
+	}
+	return newMetricsTracker, nil
+}
+
+func (c *metricsCollectorImpl) InstallCustomGaugeVecMetrics(
+	ctxt context.Context, metricsName string, metricsHelpMessage string, metricsLabels []string,
+) (*prometheus.GaugeVec, error) {
+	logTags := c.GetLogTagsForContext(ctxt)
+	newMetricsTracker := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{Name: metricsName, Help: metricsHelpMessage}, metricsLabels,
+	)
+	if err := c.prometheus.Register(newMetricsTracker); err != nil {
+		log.
+			WithError(err).
+			WithFields(logTags).
+			Errorf("Failed to register new metrics '%s'", metricsName)
+		return nil, err
+	}
+	return newMetricsTracker, nil
+}
+
 func (c *metricsCollectorImpl) ExposeCollectionEndpoint(
 	router *mux.Router, metricsPath string, maxSupportedRequest int,
 ) {
@@ -330,9 +391,7 @@ func httpRespCodeToMetricLabel(status int) string {
 	return "2XX"
 }
 
-/*
-PubSubMetricHelper PubSub publish and receive metric recording helper agent
-*/
+// PubSubMetricHelper PubSub publish and receive metric recording helper agent
 type PubSubMetricHelper interface {
 	/*
 		RecordPublish record PubSub publish message
