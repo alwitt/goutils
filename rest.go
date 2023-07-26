@@ -31,6 +31,8 @@ type RestAPIHandler struct {
 	DoNotLogHeaders map[string]bool
 	// LogLevel configure the request logging level
 	LogLevel HTTPRequestLogLevel
+	// MetricsHelper HTTP request metric collection agent
+	MetricsHelper HTTPRequestMetricHelper
 }
 
 // ErrorDetail is the response detail in case of error
@@ -158,6 +160,13 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 				respLen,
 				requestReferer,
 				userAgentString,
+			)
+		}
+
+		// Record metrics
+		if h.MetricsHelper != nil {
+			h.MetricsHelper.RecordRequest(
+				r.Method, respCode, respTimestamp.Sub(params.Timestamp), int64(respLen),
 			)
 		}
 	}

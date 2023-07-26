@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRestAPIHanderRequestIDInjection(t *testing.T) {
+func TestRestAPIHandlerRequestIDInjection(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)
 
