@@ -8,9 +8,13 @@ import (
 	"time"
 
 	"github.com/apex/log"
+	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	"github.com/urfave/negroni"
 )
+
+// ==============================================================================
+// Base HTTP Request Handling
 
 // HTTPRequestLogLevel HTTP request log level data type
 type HTTPRequestLogLevel string
@@ -244,4 +248,113 @@ func (h RestAPIHandler) WriteRESTResponse(
 		return err
 	}
 	return nil
+}
+
+// ==============================================================================
+// HTTP Client Support
+
+// HTTPClientAuthConfig HTTP client OAuth middleware configuration
+//
+// Currently only support client-credential OAuth flow configuration
+type HTTPClientAuthConfig struct {
+	// IssuerURL OpenID provider issuer URL
+	IssuerURL string `json:"issuer"`
+	// ClientID OAuth client ID
+	ClientID string `json:"client_id"`
+	// ClientSecret OAuth client secret
+	ClientSecret string `json:"client_secret"`
+	// TargetAudience target audience `aud` to acquire a token for
+	TargetAudience string `json:"target_audience"`
+	// LogTags auth middleware log tags
+	LogTags log.Fields
+}
+
+// HTTPClientRetryConfig HTTP client config retry configuration
+type HTTPClientRetryConfig struct {
+	// MaxAttempts max number of retry attempts
+	MaxAttempts int `json:"max_attempts"`
+	// InitWaitTime wait time before the first wait retry
+	InitWaitTime time.Duration `json:"initialWaitTimeInSec"`
+	// MaxWaitTime max wait time
+	MaxWaitTime time.Duration `json:"maxWaitTimeInSec"`
+}
+
+// setHTTPClientRetryParam helper function to install retry on HTTP client
+func setHTTPClientRetryParam(
+	client *resty.Client, config HTTPClientRetryConfig,
+) *resty.Client {
+	return client.
+		SetRetryCount(config.MaxAttempts).
+		SetRetryWaitTime(config.InitWaitTime).
+		SetRetryMaxWaitTime(config.MaxWaitTime)
+}
+
+// installHTTPClientAuthMiddleware install OAuth middleware on HTTP client
+func installHTTPClientAuthMiddleware(
+	parentCtxt context.Context,
+	parentClient *resty.Client,
+	config HTTPClientAuthConfig,
+	retryCfg HTTPClientRetryConfig,
+) error {
+	// define client specifically to be used by
+	oauthHTTPClient := setHTTPClientRetryParam(resty.New(), retryCfg)
+
+	// define OAuth token manager
+	oauthMgmt, err := GetNewClientCredOAuthTokenManager(
+		parentCtxt, oauthHTTPClient, ClientCredOAuthTokenManagerParam{
+			IDPIssuerURL:   config.IssuerURL,
+			ClientID:       config.ClientID,
+			ClientSecret:   config.ClientSecret,
+			TargetAudience: config.TargetAudience,
+			LogTags:        config.LogTags,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	// Build middleware for parent client
+	parentClient.OnBeforeRequest(func(c *resty.Client, r *resty.Request) error {
+		// Fetch OAuth token for request
+		token, err := oauthMgmt.GetToken(parentCtxt, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+
+		// Apply the token
+		r.SetAuthToken(token)
+
+		return nil
+	})
+
+	return nil
+}
+
+/*
+DefineHTTPClient helper function to define a resty HTTP client
+
+	@param parentCtxt context.Context - caller context
+	@param retryConfig HTTPClientRetryConfig - HTTP client retry config
+	@param authConfig *HTTPClientAuthConfig - HTTP client auth config
+	@returns new resty client
+*/
+func DefineHTTPClient(
+	parentCtxt context.Context,
+	retryConfig HTTPClientRetryConfig,
+	authConfig *HTTPClientAuthConfig,
+) (*resty.Client, error) {
+	newClient := resty.New()
+
+	// Configure resty client retry setting
+	newClient = setHTTPClientRetryParam(newClient, retryConfig)
+
+	// Install OAuth middleware
+	if authConfig != nil {
+		err := installHTTPClientAuthMiddleware(parentCtxt, newClient, *authConfig, retryConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return newClient, nil
 }
