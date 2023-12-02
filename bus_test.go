@@ -17,7 +17,7 @@ func TestMessageTopicOnePubOneSub(t *testing.T) {
 	ctxt, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	testTopic, err := GetNewMessageTopicInstance(
+	testTopic, err := getNewMessageTopicInstance(
 		ctxt, uuid.NewString(), log.Fields{"unit-testiung": "testing"},
 	)
 	assert.Nil(err)
@@ -117,7 +117,7 @@ func TestMessageTopicOnePubMultiSub(t *testing.T) {
 	ctxt, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	testTopic, err := GetNewMessageTopicInstance(
+	testTopic, err := getNewMessageTopicInstance(
 		ctxt, uuid.NewString(), log.Fields{"unit-testiung": "testing"},
 	)
 	assert.Nil(err)
@@ -259,4 +259,43 @@ func TestMessageTopicOnePubMultiSub(t *testing.T) {
 	for subName := range subs {
 		assert.Nil(testTopic.DeleteSubscription(ctxt, subName))
 	}
+}
+
+func TestMessageBus(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	ctxt, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	testBus, err := GetNewMessageBusInstance(ctxt, log.Fields{"unit-testing": "testing"})
+	assert.Nil(err)
+
+	// Case 0: create topic
+	topic := uuid.NewString()
+	{
+		_, err := testBus.CreateTopic(ctxt, topic, log.Fields{})
+		assert.Nil(err)
+	}
+	// Create same topic again
+	{
+		_, err := testBus.CreateTopic(ctxt, topic, log.Fields{})
+		assert.Nil(err)
+	}
+
+	// Case 1: get topic
+	{
+		_, err := testBus.GetTopic(ctxt, topic)
+		assert.Nil(err)
+	}
+	// Get unknown topic
+	{
+		_, err := testBus.GetTopic(ctxt, uuid.NewString())
+		assert.NotNil(err)
+	}
+
+	// Case 2: delete topic
+	assert.Nil(testBus.DeleteTopic(ctxt, topic))
+	// Delete unknown topic
+	assert.NotNil(testBus.DeleteTopic(ctxt, uuid.NewString()))
 }

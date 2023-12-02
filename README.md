@@ -19,6 +19,7 @@ Provides common support components used in other Golang projects.
 | `IntervalTimer` | Task execution trigger interval timer | Operates in periodic or one-shot mode. |
 | `PubSubClient` | PubSub client providing higher layer APIs | |
 | `RequestResponseClient` | Support request-response pattern between multiple nodes, where any node can request any other node/s. | Currently, SDK only provides a PubSub based client. |
+| `MessageBus` | Application-scoped message passing bus | |
 
 ## Getting Started
 

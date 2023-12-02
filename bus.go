@@ -10,7 +10,147 @@ import (
 )
 
 // MessageBus an application scoped local message bus
-type MessageBus interface{}
+type MessageBus interface {
+	/*
+		CreateTopic create new message topic
+
+			@param ctxt context.Context - execution context
+			@param topicName string - topic name
+			@param topicLogTags log.Fields - metadata fields to include in the logs of the topic entity
+			@return new MessageTopic instance
+	*/
+	CreateTopic(
+		ctxt context.Context, topicName string, topicLogTags log.Fields,
+	) (MessageTopic, error)
+
+	/*
+		GetTopic fetch a message topic
+
+			@param ctxt context.Context - execution context
+			@param topicName string - topic name
+			@returns MessageTopic instance
+	*/
+	GetTopic(ctxt context.Context, topicName string) (MessageTopic, error)
+
+	/*
+		DeleteTopic delete a message topic
+
+			@param ctxt context.Context - execution context
+			@param topicName string - topic name
+	*/
+	DeleteTopic(ctxt context.Context, topicName string) error
+}
+
+// messageBusImpl implements MessageBus
+type messageBusImpl struct {
+	Component
+
+	// manage access to subscriptions
+	lock sync.RWMutex
+
+	// collection of topic
+	topics map[string]MessageTopic
+
+	operationContext context.Context
+	contextCancel    context.CancelFunc
+}
+
+/*
+GetNewMessageBusInstance get message bus instance
+
+	@param parentCtxt context.Context - parent execution context
+	@param logTags log.Fields - metadata fields to include in the logs
+	@return new MessageBus instance
+*/
+func GetNewMessageBusInstance(parentCtxt context.Context, logTags log.Fields) (MessageBus, error) {
+	optCtxt, cancel := context.WithCancel(parentCtxt)
+
+	instance := &messageBusImpl{
+		Component:        Component{LogTags: logTags},
+		lock:             sync.RWMutex{},
+		topics:           make(map[string]MessageTopic),
+		operationContext: optCtxt,
+		contextCancel:    cancel,
+	}
+
+	return instance, nil
+}
+
+/*
+CreateTopic create new message topic
+
+	@param ctxt context.Context - execution context
+	@param topicName string - topic name
+	@param topicLogTags log.Fields - metadata fields to include in the logs of the topic entity
+	@return new MessageTopic instance
+*/
+func (b *messageBusImpl) CreateTopic(
+	ctxt context.Context, topicName string, topicLogTags log.Fields,
+) (MessageTopic, error) {
+	logTags := b.GetLogTagsForContext(ctxt)
+
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if existing, ok := b.topics[topicName]; ok {
+		log.WithFields(logTags).WithField("topic", topicName).Debug("Topic already defined")
+		return existing, nil
+	}
+
+	topic, err := getNewMessageTopicInstance(b.operationContext, topicName, topicLogTags)
+
+	if err != nil {
+		return nil, err
+	}
+
+	b.topics[topicName] = topic
+
+	log.WithFields(logTags).WithField("topic", topicName).Info("Defined new topic")
+
+	return topic, nil
+}
+
+/*
+GetTopic fetch a message topic
+
+	@param ctxt context.Context - execution context
+	@param topicName string - topic name
+	@returns MessageTopic instance
+*/
+func (b *messageBusImpl) GetTopic(ctxt context.Context, topicName string) (MessageTopic, error) {
+	b.lock.RLock()
+	defer b.lock.RUnlock()
+
+	if existing, ok := b.topics[topicName]; ok {
+		return existing, nil
+	}
+
+	return nil, fmt.Errorf("topic is unknown")
+}
+
+/*
+DeleteTopic delete a message topic
+
+	@param ctxt context.Context - execution context
+	@param topicName string - topic name
+*/
+func (b *messageBusImpl) DeleteTopic(ctxt context.Context, topicName string) error {
+	logTags := b.GetLogTagsForContext(ctxt)
+
+	b.lock.RLock()
+	defer b.lock.RUnlock()
+
+	if _, ok := b.topics[topicName]; !ok {
+		return fmt.Errorf("topic is unknown")
+	}
+
+	delete(b.topics, topicName)
+
+	log.WithFields(logTags).WithField("topic", topicName).Info("Deleted topic")
+	return nil
+}
+
+// ======================================================================================
 
 // MessageTopic a message bus topic, responsible for managing its child subscriptions.
 type MessageTopic interface {
@@ -61,14 +201,14 @@ type messageTopicImpl struct {
 }
 
 /*
-GetNewMessageTopicInstance get message topic instance
+getNewMessageTopicInstance get message topic instance
 
 	@param parentCtxt context.Context - parent execution context
 	@param topic string - topic name
 	@param logTags log.Fields - metadata fields to include in the logs
 	@return new MessageTopic instance
 */
-func GetNewMessageTopicInstance(
+func getNewMessageTopicInstance(
 	parentCtxt context.Context, topic string, logTags log.Fields,
 ) (MessageTopic, error) {
 	optCtxt, cancel := context.WithCancel(parentCtxt)
