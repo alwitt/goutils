@@ -1054,7 +1054,7 @@ func (c *pubsubReqRespClient) RequestTimeoutCheck(ctxt context.Context) error {
 
 	log.
 		WithFields(logTags).
-		Info("Submitting request timeout check trigger")
+		Debug("Submitting request timeout check trigger")
 
 	if err := c.outboundProcessor.Submit(
 		ctxt, rrRequestTimeoutCheckPayload{timestamp: currentTime},
