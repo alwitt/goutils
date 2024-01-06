@@ -6,6 +6,8 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net/http"
+	"path"
+	"runtime"
 	"sync"
 	"time"
 
@@ -51,6 +53,14 @@ func (c Component) GetLogTagsForContext(ctxt context.Context) log.Fields {
 	theTags := c.NewLogTagsForContext()
 	for _, modifer := range c.LogTagModifiers {
 		modifer(ctxt, theTags)
+	}
+	// Add file location
+	if pc, file, lineNo, ok := runtime.Caller(1); ok {
+		funcName := runtime.FuncForPC(pc).Name()
+		fileName := path.Base(file)
+		theTags["file"] = fileName
+		theTags["line"] = lineNo
+		theTags["func"] = funcName
 	}
 	return theTags
 }
