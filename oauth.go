@@ -81,6 +81,9 @@ type ClientCredOAuthTokenManagerParam struct {
 	LogTags log.Fields
 	// CustomLogModifiers additional log metadata modifiers to use
 	CustomLogModifiers []LogMetadataModifier
+
+	// SupportTaskMetricsHelper metrics collection helper for the support tasks
+	SupportTaskMetricsHelper TaskProcessorMetricHelper
 }
 
 /*
@@ -160,7 +163,13 @@ func GetNewClientCredOAuthTokenManager(
 		workerLogTags[lKey] = lVal
 	}
 	workerLogTags["sub-module"] = "core-worker"
-	worker, err := GetNewTaskProcessorInstance(workerCtxt, "core-worker", 8, workerLogTags)
+	worker, err := GetNewTaskProcessorInstance(
+		workerCtxt,
+		"core-worker",
+		8,
+		workerLogTags,
+		params.SupportTaskMetricsHelper,
+	)
 	if err != nil {
 		log.WithError(err).WithFields(params.LogTags).Error("Unable to define worker")
 		return nil, err

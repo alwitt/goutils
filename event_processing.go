@@ -70,6 +70,7 @@ type taskProcessorImpl struct {
 	contextCancel    context.CancelFunc
 	newTasks         chan interface{}
 	executionMap     map[reflect.Type]TaskProcessorSupportHandler
+	metrics          TaskProcessorMetricHelper
 }
 
 /*
@@ -79,10 +80,15 @@ GetNewTaskProcessorInstance get single threaded implementation of TaskProcessor
 	@param instanceName string - instance name
 	@param taskBufferLen int - number of task-parameters to buffer
 	@param logTags log.Fields - metadata fields to include in the logs
+	@param metricsHelper TaskProcessorMetricHelper - metrics collections helper
 	@return new TaskProcessor instance
 */
 func GetNewTaskProcessorInstance(
-	ctxt context.Context, instanceName string, taskBufferLen int, logTags log.Fields,
+	ctxt context.Context,
+	instanceName string,
+	taskBufferLen int,
+	logTags log.Fields,
+	metricsHelper TaskProcessorMetricHelper,
 ) (TaskProcessor, error) {
 	optCtxt, cancel := context.WithCancel(ctxt)
 	return &taskProcessorImpl{
@@ -92,6 +98,7 @@ func GetNewTaskProcessorInstance(
 		contextCancel:    cancel,
 		newTasks:         make(chan interface{}, taskBufferLen),
 		executionMap:     make(map[reflect.Type]TaskProcessorSupportHandler),
+		metrics:          metricsHelper,
 	}, nil
 }
 
@@ -105,8 +112,14 @@ Submit submits a new task parameter to be processed by a handler
 func (p *taskProcessorImpl) Submit(ctx context.Context, newTaskParam interface{}) error {
 	select {
 	case p.newTasks <- newTaskParam:
+		if p.metrics != nil {
+			p.metrics.RecordSubmit(p.name, true)
+		}
 		return nil
 	case <-ctx.Done():
+		if p.metrics != nil {
+			p.metrics.RecordSubmit(p.name, false)
+		}
 		return ctx.Err()
 	case <-p.operationContext.Done():
 		return p.operationContext.Err()
@@ -148,6 +161,11 @@ func (p *taskProcessorImpl) AddToTaskExecutionMap(theType reflect.Type, handler 
 
 // StartEventLoop starts the daemon thread for processing the submitted task-parameters
 func (p *taskProcessorImpl) processNewTaskParam(newTaskParam interface{}) error {
+	defer func() {
+		if p.metrics != nil {
+			p.metrics.RecordProcessed(p.name)
+		}
+	}()
 	if p.executionMap != nil && len(p.executionMap) > 0 {
 		log.WithFields(p.LogTags).Debugf("Processing new %s", reflect.TypeOf(newTaskParam))
 		// Process task based on the parameter type
@@ -225,6 +243,7 @@ GetNewTaskDemuxProcessorInstance get multi-threaded implementation of TaskProces
 	@param taskBufferLen int - number of task-parameters to buffer
 	@param workerNum int - number of supporting worker threads
 	@param logTags log.Fields - metadata fields to include in the logs
+	@param metricsHelper TaskProcessorMetricHelper - metrics collections helper
 	@return new TaskProcessor instance
 */
 func GetNewTaskDemuxProcessorInstance(
@@ -233,12 +252,13 @@ func GetNewTaskDemuxProcessorInstance(
 	taskBufferLen int,
 	workerNum int,
 	logTags log.Fields,
+	metricsHelper TaskProcessorMetricHelper,
 ) (TaskProcessor, error) {
 	if workerNum < 2 {
 		return nil, fmt.Errorf("won't create multi-threaded TaskProcessor with less than two workers")
 	}
 	inputTP, err := GetNewTaskProcessorInstance(
-		ctxt, fmt.Sprintf("%s.input", instanceName), taskBufferLen, logTags,
+		ctxt, fmt.Sprintf("%s.input", instanceName), taskBufferLen, logTags, metricsHelper,
 	)
 	if err != nil {
 		return nil, err
@@ -252,7 +272,11 @@ func GetNewTaskDemuxProcessorInstance(
 		}
 		perWorkerLogTags["worker"] = itr
 		workerTP, err := GetNewTaskProcessorInstance(
-			optCtxt, fmt.Sprintf("%s.worker.%d", instanceName, itr), taskBufferLen, perWorkerLogTags,
+			optCtxt,
+			fmt.Sprintf("%s.worker.%d", instanceName, itr),
+			taskBufferLen,
+			perWorkerLogTags,
+			metricsHelper,
 		)
 		if err != nil {
 			cancel()

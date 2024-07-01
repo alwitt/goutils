@@ -17,7 +17,7 @@ func TestTaskParamProcessing(t *testing.T) {
 
 	ctxt, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	uut, err := GetNewTaskProcessorInstance(ctxt, "testing", 4, log.Fields{"instance": "unit-tester"})
+	uut, err := GetNewTaskProcessorInstance(ctxt, "testing", 4, log.Fields{"instance": "unit-tester"}, nil)
 	assert.Nil(err)
 	defer func() {
 		assert.Nil(uut.StopEventLoop())
@@ -83,13 +83,13 @@ func TestTaskDemuxProcessing(t *testing.T) {
 
 	{
 		_, err := GetNewTaskDemuxProcessorInstance(
-			ctxt, "testing", 4, 0, log.Fields{"instance": "unit-tester"},
+			ctxt, "testing", 4, 0, log.Fields{"instance": "unit-tester"}, nil,
 		)
 		assert.NotNil(err)
 	}
 
 	uut, err := GetNewTaskDemuxProcessorInstance(
-		ctxt, "testing", 4, 3, log.Fields{"instance": "unit-tester"},
+		ctxt, "testing", 4, 3, log.Fields{"instance": "unit-tester"}, nil,
 	)
 	assert.Nil(err)
 	defer func() {

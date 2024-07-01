@@ -629,7 +629,7 @@ func (p *pubsubClientImpl) Publish(
 }
 
 // getSubscriptionHandle get subscription handle
-func (p *pubsubClientImpl) getSubscriptionHandle(ctxt context.Context, subscription string) (*pubsub.Subscription, error) {
+func (p *pubsubClientImpl) getSubscriptionHandle(_ context.Context, subscription string) (*pubsub.Subscription, error) {
 	p.subLock.RLock()
 	defer p.subLock.RUnlock()
 

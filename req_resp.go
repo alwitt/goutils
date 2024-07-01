@@ -185,6 +185,9 @@ type PubSubRequestResponseClientParam struct {
 	SupportWorkerCount int
 	// TimeoutEnforceInt interval between request timeout checks
 	TimeoutEnforceInt time.Duration
+
+	// SupportTaskMetricsHelper metrics collection helper for the support tasks
+	SupportTaskMetricsHelper TaskProcessorMetricHelper
 }
 
 /*
@@ -295,6 +298,7 @@ func GetNewPubSubRequestResponseClientInstance(
 		params.SupportWorkerCount*2,
 		params.SupportWorkerCount,
 		procInboundLogTags,
+		params.SupportTaskMetricsHelper,
 	)
 	if err != nil {
 		log.WithError(err).WithFields(params.LogTags).Error("Unable to define inbound request processor")
@@ -310,7 +314,11 @@ func GetNewPubSubRequestResponseClientInstance(
 	}
 	procOutboundLogTags["sub-module"] = procOutboundInstanceName
 	outboundProcessor, err := GetNewTaskProcessorInstance(
-		workerContext, procOutboundInstanceName, params.SupportWorkerCount*2, procOutboundLogTags,
+		workerContext,
+		procOutboundInstanceName,
+		params.SupportWorkerCount*2,
+		procOutboundLogTags,
+		params.SupportTaskMetricsHelper,
 	)
 	if err != nil {
 		log.WithError(err).WithFields(params.LogTags).Error("Unable to define outbound request processor")

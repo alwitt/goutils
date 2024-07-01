@@ -76,6 +76,23 @@ const (
 	//
 	// - success
 	metricsNamePubSubReceivePayloadSize = "pubsub_receive_payload_size_bytes_total"
+
+	// ====================================================================================
+	// Task Processor
+
+	// metricsNameTaskProcessorSubmit Task processor submission tracking. Additional
+	// parameters are attached via labels
+	//
+	// - processor instance
+	//
+	// - success
+	metricsNameTaskProcessorSubmit = "task_processor_submit_total"
+
+	// metricsNameTaskProcessorProcessed Task processor processed task tracking. Additional
+	// parameters are attached via labels
+	//
+	// - processor instance
+	metricsNameTaskProcessorProcessed = "task_processor_processed_total"
 )
 
 // Standard metrics labels provided with the package
@@ -97,6 +114,15 @@ const (
 
 	// labelNamePubSubSuccess whether processing is successful or not
 	labelNamePubSubSuccess = "success"
+
+	// ====================================================================================
+	// Task Processor
+
+	// labelNameTaskProcessorInstance task processor instance name
+	labelNameTaskProcessorInstance = "instance"
+
+	// labelNameTaskProcessorSuccess whether task submission is successful or not
+	labelNameTaskProcessorSuccess = "success"
 )
 
 // MetricsCollector metrics collection support client
@@ -121,6 +147,14 @@ type MetricsCollector interface {
 			@return PubSub metrics logging agent
 	*/
 	InstallPubSubMetrics() PubSubMetricHelper
+
+	/*
+		InstallTaskProcessorMetrics install tracker for Task processor operations. This will return
+		a helper agent to record the metrics
+
+			@return Task process logging agent
+	*/
+	InstallTaskProcessorMetrics() TaskProcessorMetricHelper
 
 	/*
 		InstallCustomCounterVecMetrics install new custom `CounterVec` metrics
@@ -161,10 +195,11 @@ type MetricsCollector interface {
 // metricsCollectorImpl implements MetricsCollector
 type metricsCollectorImpl struct {
 	Component
-	lock          sync.Mutex
-	prometheus    *prometheus.Registry
-	httpMetrics   HTTPRequestMetricHelper
-	pubsubMetrics PubSubMetricHelper
+	lock                 sync.Mutex
+	prometheus           *prometheus.Registry
+	httpMetrics          HTTPRequestMetricHelper
+	pubsubMetrics        PubSubMetricHelper
+	taskProcessorMetrics TaskProcessorMetricHelper
 }
 
 /*
@@ -286,6 +321,36 @@ func (c *metricsCollectorImpl) InstallPubSubMetrics() PubSubMetricHelper {
 		receivePayloadTracker: receivePayloadTracker,
 	}
 	return c.pubsubMetrics
+}
+
+func (c *metricsCollectorImpl) InstallTaskProcessorMetrics() TaskProcessorMetricHelper {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if c.taskProcessorMetrics != nil {
+		return c.taskProcessorMetrics
+	}
+
+	submitTrakcer := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: metricsNameTaskProcessorSubmit,
+			Help: "Task processor submission tracking",
+		},
+		[]string{labelNameTaskProcessorInstance, labelNameTaskProcessorSuccess},
+	)
+	processTracker := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: metricsNameTaskProcessorProcessed,
+			Help: "Task processor processed tasks tracking",
+		},
+		[]string{labelNameTaskProcessorInstance},
+	)
+	c.prometheus.MustRegister(submitTrakcer, processTracker)
+	c.taskProcessorMetrics = &taskProcessorMetricHelperImpl{
+		submitTracker:  submitTrakcer,
+		processTracker: processTracker,
+	}
+	return c.taskProcessorMetrics
 }
 
 func (c *metricsCollectorImpl) InstallCustomCounterVecMetrics(
@@ -443,4 +508,41 @@ func (t *pubsubMetricHelperImpl) RecordReceive(topic string, successful bool, pa
 	t.receivePayloadTracker.
 		With(prometheus.Labels{labelNamePubSubTopic: topic, labelNamePubSubSuccess: successStr}).
 		Add(float64(payloadLen))
+}
+
+// TaskProcessorMetricHelper Task processor metric recording helper agent
+type TaskProcessorMetricHelper interface {
+	/*
+		RecordSubmit record task submission
+
+			@param instance string - task processor instance name
+			@param successful bool - whether the operation was successful
+	*/
+	RecordSubmit(instance string, successful bool)
+
+	/*
+		RecordSubmit record task processed
+
+			@param instance string - task processor instance name
+	*/
+	RecordProcessed(instance string)
+}
+
+type taskProcessorMetricHelperImpl struct {
+	submitTracker  *prometheus.CounterVec
+	processTracker *prometheus.CounterVec
+}
+
+func (t *taskProcessorMetricHelperImpl) RecordSubmit(instance string, successful bool) {
+	successStr := "true"
+	if !successful {
+		successStr = "false"
+	}
+	t.submitTracker.With(prometheus.Labels{
+		labelNameTaskProcessorInstance: instance, labelNameTaskProcessorSuccess: successStr,
+	}).Inc()
+}
+
+func (t *taskProcessorMetricHelperImpl) RecordProcessed(instance string) {
+	t.processTracker.With(prometheus.Labels{labelNameTaskProcessorInstance: instance}).Inc()
 }
