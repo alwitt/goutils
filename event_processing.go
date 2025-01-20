@@ -257,13 +257,14 @@ func GetNewTaskDemuxProcessorInstance(
 	if workerNum < 2 {
 		return nil, fmt.Errorf("won't create multi-threaded TaskProcessor with less than two workers")
 	}
+	optCtxt, cancel := context.WithCancel(ctxt)
 	inputTP, err := GetNewTaskProcessorInstance(
-		ctxt, fmt.Sprintf("%s.input", instanceName), taskBufferLen, logTags, metricsHelper,
+		optCtxt, fmt.Sprintf("%s.input", instanceName), taskBufferLen, logTags, metricsHelper,
 	)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
-	optCtxt, cancel := context.WithCancel(ctxt)
 	workers := make([]TaskProcessor, workerNum)
 	for itr := 0; itr < workerNum; itr++ {
 		perWorkerLogTags := log.Fields{}
