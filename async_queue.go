@@ -1,9 +1,7 @@
 package goutils
 
 import (
-	"container/list"
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/apex/log"
@@ -49,7 +47,7 @@ type asyncQueueImpl[V any] struct {
 
 	name string
 
-	buffer     *list.List
+	buffer     Queue[V]
 	bufferLock sync.Mutex
 
 	newDataSignal Condition
@@ -72,7 +70,7 @@ func GetNewAsyncQueue[V any](
 	instance := &asyncQueueImpl[V]{
 		Component:     Component{LogTags: logTags},
 		name:          instanceName,
-		buffer:        list.New(),
+		buffer:        GetNewSimpleQueue[V](),
 		bufferLock:    sync.Mutex{},
 		newDataSignal: GetNewCondition(),
 	}
@@ -104,7 +102,7 @@ func (q *asyncQueueImpl[V]) Push(ctx context.Context, data V) error {
 	insert := func(m V) {
 		q.bufferLock.Lock()
 		defer q.bufferLock.Unlock()
-		_ = q.buffer.PushBack(m)
+		q.buffer.Push(m)
 	}
 	insert(data)
 
@@ -136,48 +134,34 @@ func (q *asyncQueueImpl[V]) Pop(
 	logTags := q.GetLogTagsForContext(ctx)
 
 	// Helper function to read from the buffer
-	getData := func() (V, bool, error) {
+	getData := func() (V, error) {
 		q.bufferLock.Lock()
 		defer q.bufferLock.Unlock()
-
-		var val V
-
-		// No data available
-		if q.buffer.Len() == 0 {
-			return val, false, nil
-		}
-
-		// Pop first element
-		ok := false
-		ref := q.buffer.Front()
-		val, ok = q.buffer.Remove(ref).(V)
-
-		if !ok {
-			return val, false, fmt.Errorf("buffer contained unexpected datatype")
-		}
-
-		return val, true, nil
+		return q.buffer.Pop()
 	}
 
 	var result V
 
 	for {
 		// Attempt to get data
-		var validRead bool
 		var err error
-		result, validRead, err = getData()
-		if err != nil {
-			log.WithError(err).WithFields(logTags).Error("Queue read error")
-			return result, err
-		}
-
-		// Gotten data
-		if validRead {
+		result, err = getData()
+		if err == nil {
 			break
 		}
 
-		if !blocking {
-			return result, ErrorNoDataAvailable{}
+		// Proceed based on actual error
+		switch actualErr := err.(type) {
+		case ErrorNoDataAvailable:
+			// Queue empty
+			if !blocking {
+				return result, actualErr
+			}
+
+		default:
+			// Any other error
+			log.WithError(err).WithFields(logTags).Error("Queue read error")
+			return result, err
 		}
 
 		// Wait until data is available
