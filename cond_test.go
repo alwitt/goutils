@@ -17,7 +17,7 @@ func TestConditionNotifyOne(t *testing.T) {
 	utCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	uut := NewCondition()
+	uut := GetNewCondition()
 
 	// Case 0: no waiters
 	{
@@ -58,7 +58,9 @@ func TestConditionNotifyOne(t *testing.T) {
 		go func() {
 			waitCtx, waitCancel := context.WithTimeout(utCtx, time.Millisecond*10)
 			defer waitCancel()
-			assert.NotNil(uut.Wait(waitCtx, testSignalChan))
+			err := uut.Wait(waitCtx, testSignalChan)
+			assert.NotNil(err)
+			assert.IsType(ErrorTimeout{}, err)
 			complete <- true
 		}()
 
@@ -125,7 +127,7 @@ func TestConditionNotifyAll(t *testing.T) {
 	utCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	uut := NewCondition()
+	uut := GetNewCondition()
 
 	waiters := 5
 	complete := make(chan int, waiters)

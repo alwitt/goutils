@@ -2,7 +2,6 @@ package goutils
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -16,7 +15,8 @@ type Condition interface {
 	NotifyAll() error
 
 	/*
-		Wait caller will block and wait to be notified.
+		Wait caller will block and wait to be notified. The maximum duration for the wait is
+		controlled by the context.
 
 		The signaling channel is provided by the caller, and allows the same channel to be reused
 		for subsequent calls.
@@ -37,13 +37,13 @@ type conditionImpl struct {
 }
 
 /*
-NewCondition get new condition variable.
+GetNewCondition get new condition variable.
 
 This condition has similar behavior to the C++11 std::condition_variable.
 
 	@return new condition variable
 */
-func NewCondition() Condition {
+func GetNewCondition() Condition {
 	return &conditionImpl{
 		waitersLock:   sync.Mutex{},
 		waiters:       make(map[uint64]chan bool),
@@ -83,7 +83,8 @@ func (c *conditionImpl) NotifyAll() error {
 }
 
 /*
-Wait caller will block and wait to be notified.
+Wait caller will block and wait to be notified. The maximum duration for the wait is
+controlled by the context.
 
 The signaling channel is provided by the caller, and allows the same channel to be reused
 for subsequent calls.
@@ -117,7 +118,7 @@ func (c *conditionImpl) Wait(ctx context.Context, wakeUp chan bool) error {
 	select {
 	case <-ctx.Done():
 		deregister()
-		return fmt.Errorf("wait timed out")
+		return ErrorTimeout{}
 	case <-wakeUp:
 	}
 
