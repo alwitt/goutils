@@ -25,6 +25,7 @@ type Condition interface {
 
 			@param ctx context.Context - calling context
 			@param wakeUp chan bool - signaling channel
+			@error ErrorTimeout - timed out waiting for signal
 	*/
 	Wait(ctx context.Context, wakeUp chan bool) error
 }
@@ -90,9 +91,6 @@ The signaling channel is provided by the caller, and allows the same channel to 
 for subsequent calls.
 
 IMPORTANT: the signaling channel must be buffered
-
-	@param ctx context.Context - calling context
-	@param wakeUp chan bool - signaling channel
 */
 func (c *conditionImpl) Wait(ctx context.Context, wakeUp chan bool) error {
 	waiterID := c.waiterIDTrack.Add(1)

@@ -26,6 +26,7 @@ type Queue[V any] interface {
 		Pop dequeue data
 
 			@return data from queue
+			@error ErrorNoDataAvailable - queue is empty
 	*/
 	Pop() (V, error)
 }
@@ -50,20 +51,12 @@ func GetNewSimpleQueue[V any]() Queue[V] {
 	return &simpleQueue[V]{buffer: list.New(), targetType: reflect.TypeOf(sample)}
 }
 
-/*
-Len get the current queue length
-
-	@return current queue length
-*/
+// Len get the current queue length
 func (q *simpleQueue[V]) Len() int {
 	return q.buffer.Len()
 }
 
-/*
-Push enqueue data
-
-	@param data V - data to enqueue
-*/
+// Push enqueue data
 func (q *simpleQueue[V]) Push(data V) error {
 	dataType := reflect.TypeOf(data)
 	if dataType != q.targetType {
@@ -73,11 +66,7 @@ func (q *simpleQueue[V]) Push(data V) error {
 	return nil
 }
 
-/*
-Pop dequeue data
-
-	@return data from queue
-*/
+// Pop dequeue oldest data
 func (q *simpleQueue[V]) Pop() (V, error) {
 	var val V
 
@@ -173,20 +162,12 @@ func GetNewPriorityQueue[V PriorityQueueEntry]() Queue[V] {
 	return instance
 }
 
-/*
-Len get the current queue length
-
-	@return current queue length
-*/
+// Len get the current queue length
 func (q *priorityQueue[V]) Len() int {
 	return q.buffer.Len()
 }
 
-/*
-Push enqueue data
-
-	@param data V - data to enqueue
-*/
+// Push enqueue data
 func (q *priorityQueue[V]) Push(data V) error {
 	dataType := reflect.TypeOf(data)
 	if dataType != q.targetType {
@@ -196,11 +177,7 @@ func (q *priorityQueue[V]) Push(data V) error {
 	return nil
 }
 
-/*
-Pop dequeue data
-
-	@return data from queue
-*/
+// Pop dequeue highest priority data
 func (q *priorityQueue[V]) Pop() (V, error) {
 	var val V
 

@@ -37,6 +37,8 @@ type AsyncQueue[V any] interface {
 			@param blocking bool - whether to block until data is available
 			@param newDataSignalFlag chan bool - wake up chan for use with "Condition"
 			@return data from queue
+			@error ErrorNoDataAvailable - queue is empty
+			@error ErrorTimeout - timed out waiting for data
 	*/
 	Pop(ctx context.Context, blocking bool, newDataSignalFlag chan bool) (V, error)
 }
@@ -101,24 +103,14 @@ func GetNewAsyncPriorityQueue[V PriorityQueueEntry](
 	return instance, nil
 }
 
-/*
-Len get the current queue length
-
-	@return current queue length
-*/
+// Len get the current queue length
 func (q *asyncQueueImpl[V]) Len() int {
 	q.bufferLock.Lock()
 	defer q.bufferLock.Unlock()
 	return q.buffer.Len()
 }
 
-/*
-Push enqueue data
-
-	@generic V any - the data type being passed through the queue
-	@param ctx context.Context - calling context
-	@param data V - data to enqueue
-*/
+// Push enqueue data
 func (q *asyncQueueImpl[V]) Push(ctx context.Context, data V) error {
 	logTags := q.GetLogTagsForContext(ctx)
 
@@ -147,12 +139,6 @@ for the wait is controlled by the context.
 
 The queue uses "Condition" to signal to any awaiting caller that data is available. To
 support that, the caller needs to supply wake up chan for use with "Condition".
-
-	@generic V any - the data type being passed through the queue
-	@param ctx context.Context - calling context
-	@param blocking bool - whether to block until data is available
-	@param newDataSignalFlag chan bool - wake up chan for use with "Condition"
-	@return data from queue
 */
 func (q *asyncQueueImpl[V]) Pop(
 	ctx context.Context, blocking bool, newDataSignalFlag chan bool,
