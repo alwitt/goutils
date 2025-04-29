@@ -20,6 +20,9 @@ Provides common support components used in other Golang projects.
 | `PubSubClient` | PubSub client providing higher layer APIs | |
 | `RequestResponseClient` | Support request-response pattern between multiple nodes, where any node can request any other node/s. | Currently, SDK only provides a PubSub based client. |
 | `MessageBus` | Application-scoped message passing bus | |
+| `Condition` | Condition variable | Provides C++ `std::condition_variable` like behavior |
+| `Queue[V]` | Templated data queue | Provides standard and priority queue |
+| `AsyncQueue[V]` | Templated asynchronous data queue | Provides standard and priority queue |
 
 ## Getting Started
 
