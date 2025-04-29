@@ -15,13 +15,13 @@ func (ErrorNoDataAvailable) Error() string {
 
 // ErrorUnexpectedType data has unexpected
 type ErrorUnexpectedType struct {
-	expected reflect.Type
-	gotten   reflect.Type
+	Expected reflect.Type
+	Gotten   reflect.Type
 }
 
 // Error implement error interface
 func (e ErrorUnexpectedType) Error() string {
-	return fmt.Sprintf("type '%s' is not type '%s'", e.expected, e.gotten)
+	return fmt.Sprintf("expected '%s' not '%s'", e.Expected, e.Gotten)
 }
 
 // ErrorTimeout operation timed out error

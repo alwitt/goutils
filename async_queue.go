@@ -78,6 +78,30 @@ func GetNewAsyncQueue[V any](
 }
 
 /*
+GetNewAsyncPriorityQueue define new asynchronous priority queue
+
+	@generic V PriorityQueueEntry - the data type being passed through the queue
+	@param ctx context.Context - calling context
+	@param instanceName string - queue instance name
+	@param logTags log.Fields - metadata fields to include in the logs
+	@returns new AsyncQueue instance
+*/
+func GetNewAsyncPriorityQueue[V PriorityQueueEntry](
+	ctx context.Context, instanceName string, logTags log.Fields,
+) (AsyncQueue[V], error) {
+	logTags["queue-type"] = "priority"
+	logTags["queue-name"] = instanceName
+	instance := &asyncQueueImpl[V]{
+		Component:     Component{LogTags: logTags},
+		name:          instanceName,
+		buffer:        GetNewPriorityQueue[V](),
+		bufferLock:    sync.Mutex{},
+		newDataSignal: GetNewCondition(),
+	}
+	return instance, nil
+}
+
+/*
 Len get the current queue length
 
 	@return current queue length
@@ -99,12 +123,14 @@ func (q *asyncQueueImpl[V]) Push(ctx context.Context, data V) error {
 	logTags := q.GetLogTagsForContext(ctx)
 
 	// Buffer data
-	insert := func(m V) {
+	insert := func(m V) error {
 		q.bufferLock.Lock()
 		defer q.bufferLock.Unlock()
-		q.buffer.Push(m)
+		return q.buffer.Push(m)
 	}
-	insert(data)
+	if err := insert(data); err != nil {
+		return err
+	}
 
 	// Notify waiting caller
 	if err := q.newDataSignal.NotifyOne(); err != nil {
