@@ -57,7 +57,7 @@ type clientCredOAuthTokenManager struct {
 	tasks            TaskProcessor
 	clientID         string
 	clientSecret     string
-	tokenAudience    string
+	tokenAudience    *string
 	idpConfig        openIDIssuerConfig
 	workerCtxt       context.Context
 	workerCtxtCancel context.CancelFunc
@@ -76,7 +76,7 @@ type ClientCredOAuthTokenManagerParam struct {
 	// ClientSecret OAuth client secret
 	ClientSecret string `validate:"required"`
 	// TargetAudience the token's target audience
-	TargetAudience string `validate:"required,url"`
+	TargetAudience *string
 	// LogTags metadata fields to include in the logs
 	LogTags log.Fields
 	// CustomLogModifiers additional log metadata modifiers to use
@@ -265,11 +265,13 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 		log.WithFields(logTags).Debug("Fetching new token")
 
 		// Get new token
-		buildRequest := map[string]interface{}{
+		buildRequest := map[string]string{
 			"client_id":     c.clientID,
 			"client_secret": c.clientSecret,
-			"audience":      c.tokenAudience,
 			"grant_type":    "client_credentials",
+		}
+		if c.tokenAudience != nil {
+			buildRequest["audience"] = *c.tokenAudience
 		}
 
 		// Make the request
@@ -281,7 +283,9 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 		var newToken tokenResp
 		resp, err := c.httpClient.
 			R().
-			SetBody(&buildRequest).
+			SetHeader("Content-Type", "application/x-www-form-urlencoded").
+			SetHeader("Accept", "application/json").
+			SetFormData(buildRequest).
 			SetResult(&newToken).
 			Post(c.idpConfig.TokenEP)
 		if err != nil {
@@ -290,7 +294,9 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 			return err
 		}
 		if !resp.IsSuccess() {
-			err := fmt.Errorf("token fetch returned status code %d", resp.StatusCode())
+			err := fmt.Errorf(
+				"token fetch returned status code %d '%s'", resp.StatusCode(), string(resp.Body()),
+			)
 			log.WithError(err).WithFields(logTags).Error("Token fetch failure")
 			params.errorCB(err)
 			return err

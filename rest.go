@@ -264,7 +264,7 @@ type HTTPClientAuthConfig struct {
 	// ClientSecret OAuth client secret
 	ClientSecret string `json:"client_secret"`
 	// TargetAudience target audience `aud` to acquire a token for
-	TargetAudience string `json:"target_audience"`
+	TargetAudience *string `json:"target_audience"`
 	// LogTags auth middleware log tags
 	LogTags log.Fields
 }

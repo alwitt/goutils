@@ -187,7 +187,8 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 				assert.True(ok)
 				t, err := json.Marshal(&msg)
 				assert.Nil(err)
-				fmt.Fprintf(w, "%s\n", t)
+				_, err = fmt.Fprintf(w, "%s\n", t)
+				assert.Nil(err)
 				flusher.Flush()
 				log.Debugf("Sent %s\n", t)
 			}

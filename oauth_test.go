@@ -2,7 +2,6 @@ package goutils_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,11 +36,12 @@ func TestClientCredOAuthTokenManager(t *testing.T) {
 	configURL := fmt.Sprintf("%s/.well-known/openid-configuration", idpBaseURL)
 	tokenURL := fmt.Sprintf("%s/auth/token", idpBaseURL)
 
+	testAud := "application.testing.dev"
 	testCfg := goutils.ClientCredOAuthTokenManagerParam{
 		IDPIssuerURL:       idpBaseURL,
 		ClientID:           uuid.NewString(),
 		ClientSecret:       uuid.NewString(),
-		TargetAudience:     "http://application.testing.dev",
+		TargetAudience:     &testAud,
 		LogTags:            log.Fields{"module": "goutils", "component": "client-cred-oauth"},
 		CustomLogModifiers: []goutils.LogMetadataModifier{},
 	}
@@ -76,24 +76,12 @@ func TestClientCredOAuthTokenManager(t *testing.T) {
 				req, err := io.ReadAll(r.Body)
 				assert.Nil(err)
 
-				reqBody := map[string]string{}
-				assert.Nil(json.Unmarshal(req, &reqBody))
+				reqBody := string(req)
 
-				clientID, ok := reqBody["client_id"]
-				assert.True(ok)
-				assert.Equal(testCfg.ClientID, clientID)
-
-				clientSecret, ok := reqBody["client_secret"]
-				assert.True(ok)
-				assert.Equal(testCfg.ClientSecret, clientSecret)
-
-				audience, ok := reqBody["audience"]
-				assert.True(ok)
-				assert.Equal(testCfg.TargetAudience, audience)
-
-				grantType, ok := reqBody["grant_type"]
-				assert.True(ok)
-				assert.Equal("client_credentials", grantType)
+				assert.Contains(reqBody, fmt.Sprintf("client_id=%s", testCfg.ClientID))
+				assert.Contains(reqBody, fmt.Sprintf("client_secret=%s", testCfg.ClientSecret))
+				assert.Contains(reqBody, fmt.Sprintf("audience=%s", testAud))
+				assert.Contains(reqBody, "grant_type=client_credentials")
 
 				// Return the token
 				return httpmock.NewJsonResponse(200, testToken0)

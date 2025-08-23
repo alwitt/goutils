@@ -166,7 +166,7 @@ func (p *taskProcessorImpl) processNewTaskParam(newTaskParam interface{}) error 
 			p.metrics.RecordProcessed(p.name)
 		}
 	}()
-	if p.executionMap != nil && len(p.executionMap) > 0 {
+	if len(p.executionMap) > 0 {
 		log.WithFields(p.LogTags).Debugf("Processing new %s", reflect.TypeOf(newTaskParam))
 		// Process task based on the parameter type
 		if theHandler, ok := p.executionMap[reflect.TypeOf(newTaskParam)]; ok {
@@ -309,7 +309,7 @@ func (p *taskDemuxProcessorImpl) Submit(ctx context.Context, newTaskParam interf
 
 // processNewTaskParam execute a submitted task-parameter
 func (p *taskDemuxProcessorImpl) processNewTaskParam(newTaskParam interface{}) error {
-	if p.workers != nil && len(p.workers) > 0 {
+	if len(p.workers) > 0 {
 		log.WithFields(p.LogTags).Debugf("Processing new %s", reflect.TypeOf(newTaskParam))
 		defer func() { p.routeIdx = (p.routeIdx + 1) % len(p.workers) }()
 		return p.workers[p.routeIdx].Submit(p.operationContext, newTaskParam)

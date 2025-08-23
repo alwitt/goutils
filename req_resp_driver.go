@@ -154,7 +154,7 @@ func (d *RequestResponseDriver) MakeRequest(
 	// Handler in case of request timeout
 	timeoutChan := make(chan error, 2)
 	timeoutCB := func(ctxt context.Context) error {
-		err := fmt.Errorf(requestInstanceName)
+		err := fmt.Errorf("%s", requestInstanceName)
 		log.
 			WithError(err).
 			WithFields(logTags).
