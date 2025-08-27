@@ -63,6 +63,7 @@ type clientCredOAuthTokenManager struct {
 	workerCtxtCancel context.CancelFunc
 	token            *string
 	tokenExpire      time.Time
+	timeBuffer       time.Duration
 	wg               sync.WaitGroup
 	validate         *validator.Validate
 }
@@ -81,6 +82,10 @@ type ClientCredOAuthTokenManagerParam struct {
 	LogTags log.Fields
 	// CustomLogModifiers additional log metadata modifiers to use
 	CustomLogModifiers []LogMetadataModifier
+	// TimeBuffer time buffer before a token expires to perform the token refresh / renew.
+	// This helps in situations where there is a time offset between the client and the
+	// server.
+	TimeBuffer time.Duration
 
 	// SupportTaskMetricsHelper metrics collection helper for the support tasks
 	SupportTaskMetricsHelper TaskProcessorMetricHelper
@@ -148,6 +153,7 @@ func GetNewClientCredOAuthTokenManager(
 		workerCtxtCancel: workerCtxtCancel,
 		token:            nil,
 		tokenExpire:      time.Time{},
+		timeBuffer:       params.TimeBuffer,
 		wg:               sync.WaitGroup{},
 		validate:         validate,
 	}
@@ -261,7 +267,7 @@ func (c *clientCredOAuthTokenManager) processGetToken(params interface{}) error 
 func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) error {
 	logTags := c.GetLogTagsForContext(c.workerCtxt)
 
-	if c.token == nil || c.tokenExpire.Before(params.timestamp) {
+	if c.token == nil || c.tokenExpire.Before(params.timestamp.Add(c.timeBuffer)) {
 		log.WithFields(logTags).Debug("Fetching new token")
 
 		// Get new token
