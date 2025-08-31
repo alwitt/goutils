@@ -17,7 +17,9 @@ func TestTaskParamProcessing(t *testing.T) {
 
 	ctxt, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	uut, err := GetNewTaskProcessorInstance(ctxt, "testing", 4, log.Fields{"instance": "unit-tester"}, nil)
+	uut, err := GetNewTaskProcessorInstance(
+		ctxt, "testing", 4, log.Fields{"instance": "unit-tester"}, nil,
+	)
 	assert.Nil(err)
 	defer func() {
 		assert.Nil(uut.StopEventLoop())
@@ -81,27 +83,18 @@ func TestTaskDemuxProcessing(t *testing.T) {
 	ctxt, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	{
-		_, err := GetNewTaskDemuxProcessorInstance(
-			ctxt, "testing", 4, 0, log.Fields{"instance": "unit-tester"}, nil,
-		)
-		assert.NotNil(err)
-	}
-
-	uut, err := GetNewTaskDemuxProcessorInstance(
-		ctxt, "testing", 4, 3, log.Fields{"instance": "unit-tester"}, nil,
+	uut, err := GetNewTaskProcessorInstance(
+		ctxt, "testing", 3, log.Fields{"instance": "unit-tester"}, nil,
 	)
 	assert.Nil(err)
 	defer func() {
 		assert.Nil(uut.StopEventLoop())
 	}()
 
-	// recast to source
-	uutc := uut.(*taskDemuxProcessorImpl)
-	assert.Equal(0, uutc.routeIdx)
-
 	// start the built in processes
-	assert.Nil(uut.StartEventLoop(&wg))
+	for itr := 0; itr < 3; itr++ {
+		assert.Nil(uut.StartEventLoop(&wg))
+	}
 
 	path1 := 0
 	path2 := 0
@@ -144,7 +137,6 @@ func TestTaskDemuxProcessing(t *testing.T) {
 		cancel()
 		testWG.Wait()
 		assert.Equal(1, path1)
-		assert.Equal(1, uutc.routeIdx)
 	}
 
 	// Case 2: trigger
@@ -155,7 +147,6 @@ func TestTaskDemuxProcessing(t *testing.T) {
 		cancel()
 		testWG.Wait()
 		assert.Equal(2, path1)
-		assert.Equal(2, uutc.routeIdx)
 	}
 
 	// Case 3: trigger back to back
@@ -170,6 +161,5 @@ func TestTaskDemuxProcessing(t *testing.T) {
 		testWG.Wait()
 		assert.Equal(1, path2)
 		assert.Equal(1, path3)
-		assert.Equal(1, uutc.routeIdx)
 	}
 }

@@ -292,11 +292,10 @@ func GetNewPubSubRequestResponseClientInstance(
 		procInboundLogTags[lKey] = lVal
 	}
 	procInboundLogTags["sub-module"] = procInboundInstanceName
-	inboundProcessor, err := GetNewTaskDemuxProcessorInstance(
+	inboundProcessor, err := GetNewTaskProcessorInstance(
 		workerContext,
 		procInboundInstanceName,
 		params.SupportWorkerCount*2,
-		params.SupportWorkerCount,
 		procInboundLogTags,
 		params.SupportTaskMetricsHelper,
 	)
@@ -422,13 +421,21 @@ func GetNewPubSubRequestResponseClientInstance(
 	// -----------------------------------------------------------------------------------------
 	// Start the daemon processors
 
-	if err := outboundProcessor.StartEventLoop(&instance.wg); err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to outbound processing task pool")
-		return nil, err
-	}
-	if err := inboundProcessor.StartEventLoop(&instance.wg); err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to inbound processing task pool")
-		return nil, err
+	for itr := 0; itr < params.SupportWorkerCount; itr++ {
+		if err := outboundProcessor.StartEventLoop(&instance.wg); err != nil {
+			log.
+				WithError(err).
+				WithFields(params.LogTags).
+				Error("Unable to start outbound processing task pool")
+			return nil, err
+		}
+		if err := inboundProcessor.StartEventLoop(&instance.wg); err != nil {
+			log.
+				WithError(err).
+				WithFields(params.LogTags).
+				Error("Unable to start inbound processing task pool")
+			return nil, err
+		}
 	}
 
 	// -----------------------------------------------------------------------------------------
