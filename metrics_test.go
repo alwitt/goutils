@@ -40,13 +40,6 @@ func TestHTTPRequestsMetricsCollection(t *testing.T) {
 		MetricsHelper:   httpMetricsAgent,
 	}
 
-	testRootRouter := mux.NewRouter()
-	testMetricRouter := testRootRouter.PathPrefix("/metric").Subrouter()
-	testAppRouter := testRootRouter.PathPrefix("/ut").Subrouter()
-
-	// Setup metric reporting endpoint
-	uut.ExposeCollectionEndpoint(testMetricRouter, "/report", 4)
-
 	type testParam struct {
 		method string
 		status int
@@ -69,6 +62,13 @@ func TestHTTPRequestsMetricsCollection(t *testing.T) {
 			assert.Nil(err)
 		}
 
+		testRootRouter := mux.NewRouter()
+		testMetricRouter := testRootRouter.PathPrefix("/metric").Subrouter()
+		testAppRouter := testRootRouter.PathPrefix("/ut").Subrouter()
+
+		// Setup metric reporting endpoint
+		uut.ExposeCollectionEndpoint(testMetricRouter, "/report", 4)
+
 		// Setup test route
 		respRecorder := httptest.NewRecorder()
 		testAppRouter.HandleFunc("/testing", testHTTPMiddleware.LoggingMiddleware(testHandler))
@@ -79,6 +79,12 @@ func TestHTTPRequestsMetricsCollection(t *testing.T) {
 
 	// Read the metrics
 	{
+		testRootRouter := mux.NewRouter()
+		testMetricRouter := testRootRouter.PathPrefix("/metric").Subrouter()
+
+		// Setup metric reporting endpoint
+		uut.ExposeCollectionEndpoint(testMetricRouter, "/report", 4)
+
 		req, err := http.NewRequest("GET", "/metric/report", nil)
 		assert.Nil(err)
 		respRecorder := httptest.NewRecorder()

@@ -10,49 +10,49 @@ on:
   workflow_dispatch:
 
 jobs:
-  golint:
+  revive:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.20"
+          go-version: "1.25"
 
-      - name: golint
-        uses: Jerome1337/golint-action@v1.0.3
+      - name: Revive
+        uses: morphy2k/revive-action@v2
         with:
-          golint-path: "./..."
+          config: revive.toml
 
   golangci-lint:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.20"
+          go-version: "1.25"
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.57.2
+          version: v2.7.2
           args: --timeout 3m0s
 
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.20"
+          go-version: "1.25"
 
       - name: Test
         env:
