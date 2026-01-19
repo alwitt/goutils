@@ -314,7 +314,7 @@ func installHTTPClientAuthMiddleware(
 	}
 
 	// Build middleware for parent client
-	parentClient.OnBeforeRequest(func(c *resty.Client, r *resty.Request) error {
+	parentClient.OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
 		// Fetch OAuth token for request
 		token, err := oauthMgmt.GetToken(parentCtxt, time.Now().UTC())
 		if err != nil {

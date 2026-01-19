@@ -5,7 +5,7 @@ all: lint
 .PHONY: lint
 lint: .prepare ## Lint the files
 	@go mod tidy
-	@golint ./...
+	@revive -config revive.toml ./...
 	@golangci-lint run ./...
 
 .PHONY: fix
@@ -22,10 +22,8 @@ one-test: .prepare ## Run one unittest
 	. .env; go test --count 1 -v -timeout 30s -run ^$(FILTER) github.com/alwitt/goutils/...
 
 .prepare: ## Prepare the project for local development
-	@pip3 install --user pre-commit
 	@pre-commit install
 	@pre-commit install-hooks
-	@GO111MODULE=on go install github.com/go-critic/go-critic/cmd/gocritic@v0.5.4
 	@touch .prepare
 
 help: ## Display this help screen

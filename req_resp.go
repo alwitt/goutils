@@ -471,7 +471,7 @@ Stop stop any support background tasks which were started
 
 	@param ctxt context.Context - execution context
 */
-func (c *pubsubReqRespClient) Stop(ctxt context.Context) error {
+func (c *pubsubReqRespClient) Stop(_ context.Context) error {
 	c.processorContextCancel()
 
 	if err := c.inboundProcessor.StopEventLoop(); err != nil {

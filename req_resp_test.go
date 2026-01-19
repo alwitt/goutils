@@ -70,7 +70,7 @@ func TestReqRespBasicOperation(t *testing.T) {
 	// Install inbound request handlers
 	inboundRequestChans := []chan goutils.ReqRespMessage{}
 	genInboundRequestHandler := func(idx int, rxChan chan goutils.ReqRespMessage) goutils.ReqRespMessageHandler {
-		return func(ctxt context.Context, msg goutils.ReqRespMessage) error {
+		return func(_ context.Context, msg goutils.ReqRespMessage) error {
 			log.Debugf("Client %d received inbound REQUEST", idx)
 			rxChan <- msg
 			return nil
@@ -78,7 +78,7 @@ func TestReqRespBasicOperation(t *testing.T) {
 	}
 	inboundResponseChans := []chan goutils.ReqRespMessage{}
 	genInboundResponseHandler := func(idx int, rxChan chan goutils.ReqRespMessage) goutils.ReqRespMessageHandler {
-		return func(ctxt context.Context, msg goutils.ReqRespMessage) error {
+		return func(_ context.Context, msg goutils.ReqRespMessage) error {
 			log.Debugf("Client %d received inbound RESPONSE", idx)
 			rxChan <- msg
 			return nil
@@ -110,7 +110,7 @@ func TestReqRespBasicOperation(t *testing.T) {
 			ExpectedResponsesCount: 1,
 			Blocking:               false,
 			Timeout:                time.Second * 5,
-			TimeoutHandler: func(ctxt context.Context) error {
+			TimeoutHandler: func(_ context.Context) error {
 				assert.False(true, "request is expected to timeout")
 				return nil
 			},
@@ -166,7 +166,7 @@ func TestReqRespBasicOperation(t *testing.T) {
 				ExpectedResponsesCount: 2,
 				Blocking:               true,
 				Timeout:                time.Second * 5,
-				TimeoutHandler: func(ctxt context.Context) error {
+				TimeoutHandler: func(_ context.Context) error {
 					assert.False(true, "request is expected to timeout")
 					return nil
 				},
@@ -296,7 +296,7 @@ func TestReqRespRequestTimeoutHandling(t *testing.T) {
 	// Install inbound request handlers
 	inboundRequestChans := []chan goutils.ReqRespMessage{}
 	genInboundRequestHandler := func(idx int, rxChan chan goutils.ReqRespMessage) goutils.ReqRespMessageHandler {
-		return func(ctxt context.Context, msg goutils.ReqRespMessage) error {
+		return func(_ context.Context, msg goutils.ReqRespMessage) error {
 			log.Debugf("Client %d received inbound REQUEST", idx)
 			rxChan <- msg
 			return nil
@@ -304,7 +304,7 @@ func TestReqRespRequestTimeoutHandling(t *testing.T) {
 	}
 	inboundResponseChans := []chan goutils.ReqRespMessage{}
 	genInboundResponseHandler := func(idx int, rxChan chan goutils.ReqRespMessage) goutils.ReqRespMessageHandler {
-		return func(ctxt context.Context, msg goutils.ReqRespMessage) error {
+		return func(_ context.Context, msg goutils.ReqRespMessage) error {
 			log.Debugf("Client %d received inbound RESPONSE", idx)
 			rxChan <- msg
 			return nil
@@ -331,7 +331,7 @@ func TestReqRespRequestTimeoutHandling(t *testing.T) {
 		reqPayload := []byte(uuid.NewString())
 
 		timeoutIndication := make(chan bool)
-		timeoutHandler := func(ctxt context.Context) error {
+		timeoutHandler := func(_ context.Context) error {
 			log.Debugf("Request timed out")
 			timeoutIndication <- true
 			return nil
@@ -378,7 +378,7 @@ func TestReqRespRequestTimeoutHandling(t *testing.T) {
 		reqPayload := []byte(uuid.NewString())
 
 		timeoutIndication := make(chan bool)
-		timeoutHandler := func(ctxt context.Context) error {
+		timeoutHandler := func(_ context.Context) error {
 			log.Debugf("Request timed out")
 			timeoutIndication <- true
 			return nil

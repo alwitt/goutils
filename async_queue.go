@@ -1,3 +1,4 @@
+// Package goutils - common utility support package to be used by many projects
 package goutils
 
 import (
@@ -65,7 +66,7 @@ GetNewAsyncQueue define new asynchronous queue
 	@returns new AsyncQueue instance
 */
 func GetNewAsyncQueue[V any](
-	ctx context.Context, instanceName string, logTags log.Fields,
+	_ context.Context, instanceName string, logTags log.Fields,
 ) (AsyncQueue[V], error) {
 	logTags["queue-type"] = "basic"
 	logTags["queue-name"] = instanceName
@@ -89,7 +90,7 @@ GetNewAsyncPriorityQueue define new asynchronous priority queue
 	@returns new AsyncQueue instance
 */
 func GetNewAsyncPriorityQueue[V PriorityQueueEntry](
-	ctx context.Context, instanceName string, logTags log.Fields,
+	_ context.Context, instanceName string, logTags log.Fields,
 ) (AsyncQueue[V], error) {
 	logTags["queue-type"] = "priority"
 	logTags["queue-name"] = instanceName

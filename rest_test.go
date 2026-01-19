@@ -40,7 +40,7 @@ func TestRestAPIHandlerRequestIDInjection(t *testing.T) {
 		assert.Nil(err)
 		req.Header.Add("Request-ID", rid)
 
-		dummyHandler := func(w http.ResponseWriter, r *http.Request) {
+		dummyHandler := func(_ http.ResponseWriter, r *http.Request) {
 			callContext := r.Context()
 			assert.NotNil(callContext.Value(goutils.RestRequestParamKey{}))
 			v, ok := callContext.Value(goutils.RestRequestParamKey{}).(goutils.RestRequestParam)
@@ -77,7 +77,7 @@ func TestRestAPIHandlerRequestIDInjection(t *testing.T) {
 		assert.Nil(err)
 		req.Header.Add(testReqIDHeader, rid)
 
-		dummyHandler := func(w http.ResponseWriter, r *http.Request) {
+		dummyHandler := func(_ http.ResponseWriter, r *http.Request) {
 			callContext := r.Context()
 			assert.NotNil(callContext.Value(goutils.RestRequestParamKey{}))
 			v, ok := callContext.Value(goutils.RestRequestParamKey{}).(goutils.RestRequestParam)
@@ -119,7 +119,7 @@ func TestRestAPIHandlerRequestLogging(t *testing.T) {
 		req.Header.Add("Allowed", value1)
 		req.Header.Add("Not-Allowed", value2)
 
-		dummyHandler := func(w http.ResponseWriter, r *http.Request) {
+		dummyHandler := func(_ http.ResponseWriter, r *http.Request) {
 			callContext := r.Context()
 			assert.NotNil(callContext.Value(goutils.RestRequestParamKey{}))
 			v, ok := callContext.Value(goutils.RestRequestParamKey{}).(goutils.RestRequestParam)
@@ -169,7 +169,7 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 	defer ctxtCancel()
 
 	// Define streaming data handler
-	testHandler := func(w http.ResponseWriter, r *http.Request) {
+	testHandler := func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		assert.True(ok)
 		w.Header().Set("Content-Type", "text/event-stream")

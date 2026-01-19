@@ -37,7 +37,7 @@ func TestTaskParamProcessing(t *testing.T) {
 	type testStruct3 struct{}
 
 	executorMap := map[reflect.Type]TaskProcessorSupportHandler{
-		reflect.TypeOf(testStruct1{}): func(p interface{}) error {
+		reflect.TypeOf(testStruct1{}): func(_ interface{}) error {
 			return nil
 		},
 	}
@@ -51,8 +51,8 @@ func TestTaskParamProcessing(t *testing.T) {
 	}
 
 	executorMap = map[reflect.Type]TaskProcessorSupportHandler{
-		reflect.TypeOf(testStruct1{}): func(p interface{}) error { return nil },
-		reflect.TypeOf(testStruct3{}): func(p interface{}) error { return fmt.Errorf("Dummy error") },
+		reflect.TypeOf(testStruct1{}): func(_ interface{}) error { return nil },
+		reflect.TypeOf(testStruct3{}): func(_ interface{}) error { return fmt.Errorf("Dummy error") },
 	}
 
 	// Case 3: change executor map
@@ -66,7 +66,7 @@ func TestTaskParamProcessing(t *testing.T) {
 	// Case 4: append to existing map
 	{
 		assert.Nil(uut.AddToTaskExecutionMap(
-			reflect.TypeOf(&testStruct2{}), func(p interface{}) error { return nil },
+			reflect.TypeOf(&testStruct2{}), func(_ interface{}) error { return nil },
 		))
 		assert.Nil(uutCast.processNewTaskParam(testStruct1{}))
 		assert.Nil(uutCast.processNewTaskParam(&testStruct2{}))
@@ -105,17 +105,17 @@ func TestTaskDemuxProcessing(t *testing.T) {
 	type testStruct3 struct{}
 
 	testWG := sync.WaitGroup{}
-	pathCB1 := func(p interface{}) error {
+	pathCB1 := func(_ interface{}) error {
 		path1++
 		testWG.Done()
 		return nil
 	}
-	pathCB2 := func(p interface{}) error {
+	pathCB2 := func(_ interface{}) error {
 		path2++
 		testWG.Done()
 		return nil
 	}
-	pathCB3 := func(p interface{}) error {
+	pathCB3 := func(_ interface{}) error {
 		path3++
 		testWG.Done()
 		return nil

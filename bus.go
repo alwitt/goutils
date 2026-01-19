@@ -117,7 +117,7 @@ GetTopic fetch a message topic
 	@param topicName string - topic name
 	@returns MessageTopic instance
 */
-func (b *messageBusImpl) GetTopic(ctxt context.Context, topicName string) (MessageTopic, error) {
+func (b *messageBusImpl) GetTopic(_ context.Context, topicName string) (MessageTopic, error) {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 

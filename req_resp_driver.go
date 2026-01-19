@@ -143,7 +143,7 @@ func (d *RequestResponseDriver) MakeRequest(
 
 	// Handler to receive the message from control
 	respReceiveChan := make(chan ReqRespMessage, callParam.ExpectedResponsesCount+1)
-	respReceiveCB := func(ctxt context.Context, msg ReqRespMessage) error {
+	respReceiveCB := func(_ context.Context, msg ReqRespMessage) error {
 		log.
 			WithFields(logTags).
 			WithField("request-instance", requestInstanceName).
@@ -153,7 +153,7 @@ func (d *RequestResponseDriver) MakeRequest(
 	}
 	// Handler in case of request timeout
 	timeoutChan := make(chan error, 2)
-	timeoutCB := func(ctxt context.Context) error {
+	timeoutCB := func(_ context.Context) error {
 		err := fmt.Errorf("%s", requestInstanceName)
 		log.
 			WithError(err).

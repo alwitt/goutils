@@ -334,7 +334,7 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 	return nil
 }
 
-func (c *clientCredOAuthTokenManager) Stop(ctxt context.Context) error {
+func (c *clientCredOAuthTokenManager) Stop(_ context.Context) error {
 	c.workerCtxtCancel()
 
 	return c.tasks.StopEventLoop()

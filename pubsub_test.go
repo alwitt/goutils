@@ -254,7 +254,7 @@ func TestPubSubDataPassing(t *testing.T) {
 		meta map[string]string
 	}
 	rxMsg := make(chan msgPkg)
-	receiveMsg := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+	receiveMsg := func(_ context.Context, _ time.Time, msg []byte, meta map[string]string) error {
 		rxMsg <- msgPkg{msg: msg, meta: meta}
 		return nil
 	}
@@ -356,11 +356,11 @@ func TestPubSubMultiReaderOneSubcription(t *testing.T) {
 
 	// Support for receiving messages
 	rxMsg := make(chan msgWrap)
-	receiveMsg0 := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+	receiveMsg0 := func(_ context.Context, _ time.Time, msg []byte, meta map[string]string) error {
 		rxMsg <- msgWrap{rxIdx: 0, msg: msg, meta: meta}
 		return nil
 	}
-	receiveMsg1 := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+	receiveMsg1 := func(_ context.Context, _ time.Time, msg []byte, meta map[string]string) error {
 		rxMsg <- msgWrap{rxIdx: 1, msg: msg, meta: meta}
 		return nil
 	}
@@ -478,11 +478,11 @@ func TestPubSubMultiSubscriptionOneTopic(t *testing.T) {
 
 	// Support for receiving messages
 	rxMsg := make(chan msgWrap)
-	receiveMsg0 := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+	receiveMsg0 := func(_ context.Context, _ time.Time, msg []byte, meta map[string]string) error {
 		rxMsg <- msgWrap{rxIdx: 0, msg: msg, meta: meta}
 		return nil
 	}
-	receiveMsg1 := func(ctxt context.Context, ts time.Time, msg []byte, meta map[string]string) error {
+	receiveMsg1 := func(_ context.Context, _ time.Time, msg []byte, meta map[string]string) error {
 		rxMsg <- msgWrap{rxIdx: 1, msg: msg, meta: meta}
 		return nil
 	}

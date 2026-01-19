@@ -50,7 +50,7 @@ func TestClientCredOAuthTokenManager(t *testing.T) {
 	httpmock.RegisterResponder(
 		"GET",
 		configURL,
-		func(r *http.Request) (*http.Response, error) {
+		func(_ *http.Request) (*http.Response, error) {
 			return httpmock.NewJsonResponse(200, map[string]string{
 				"token_endpoint": tokenURL,
 			})
@@ -130,7 +130,7 @@ func TestClientCredOAuthTokenManager(t *testing.T) {
 		httpmock.RegisterResponder(
 			"POST",
 			tokenURL,
-			func(r *http.Request) (*http.Response, error) {
+			func(_ *http.Request) (*http.Response, error) {
 				return httpmock.NewJsonResponse(200, testToken1)
 			},
 		)
@@ -193,7 +193,7 @@ func TestClientCredOAuthTokenManagerEarlyRefresh(t *testing.T) {
 	httpmock.RegisterResponder(
 		"GET",
 		configURL,
-		func(r *http.Request) (*http.Response, error) {
+		func(_ *http.Request) (*http.Response, error) {
 			return httpmock.NewJsonResponse(200, map[string]string{
 				"token_endpoint": tokenURL,
 			})
@@ -273,7 +273,7 @@ func TestClientCredOAuthTokenManagerEarlyRefresh(t *testing.T) {
 		httpmock.RegisterResponder(
 			"POST",
 			tokenURL,
-			func(r *http.Request) (*http.Response, error) {
+			func(_ *http.Request) (*http.Response, error) {
 				return httpmock.NewJsonResponse(200, testToken1)
 			},
 		)
