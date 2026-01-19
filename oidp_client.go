@@ -6,9 +6,12 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/apex/log"
 	"github.com/go-resty/resty/v2"
@@ -64,12 +67,13 @@ type oidpSigningJWK struct {
 // oidpClientImpl implements OpenIDProviderClient
 type oidpClientImpl struct {
 	Component
-	cfg          openIDIssuerConfig
-	hostOverride *string
-	httpClient   *resty.Client
-	publicKey    map[string]interface{}
-	clientID     *string
-	clientSecret *string
+	cfg             openIDIssuerConfig
+	hostOverride    *string
+	httpClient      *resty.Client
+	publicKey       map[string]interface{}
+	clientID        *string
+	clientSecret    *string
+	targetAudiences []string
 }
 
 // OIDPClientParam defines connection parameters to one OpenID provider
@@ -82,6 +86,8 @@ type OIDPClientParam struct {
 	ClientCred *string `json:"client_cred" validate:"omitempty"`
 	// RequestHostOverride if specified, use this as "Host" header when communicating with provider
 	RequestHostOverride *string `json:"host_override" validate:"omitempty"`
+	// TargetAudiences a set of audiences which are accepted
+	TargetAudiences []string `json:"target_audiences"`
 	// LogTags metadata fields to include in the logs
 	LogTags log.Fields
 }
@@ -177,12 +183,13 @@ func DefineOpenIDProviderClient(
 				ModifyLogMetadataByRestRequestParam,
 			},
 		},
-		cfg:          cfg,
-		hostOverride: params.RequestHostOverride,
-		httpClient:   httpClient,
-		publicKey:    keyMaterial,
-		clientID:     params.ClientID,
-		clientSecret: params.ClientCred,
+		cfg:             cfg,
+		hostOverride:    params.RequestHostOverride,
+		httpClient:      httpClient,
+		publicKey:       keyMaterial,
+		clientID:        params.ClientID,
+		clientSecret:    params.ClientCred,
+		targetAudiences: params.TargetAudiences,
 	}, nil
 }
 
@@ -217,7 +224,23 @@ ParseJWT parses a string into a JWT token object.
 	@return the parsed JWT token object
 */
 func (c *oidpClientImpl) ParseJWT(raw string, claimStore jwt.Claims) (*jwt.Token, error) {
-	return jwt.ParseWithClaims(raw, claimStore, c.AssociatedPublicKey)
+	if len(c.targetAudiences) > 0 {
+		return jwt.ParseWithClaims(
+			raw,
+			claimStore,
+			c.AssociatedPublicKey,
+			jwt.WithAudience(c.targetAudiences...),
+			jwt.WithIssuer(c.cfg.Issuer),
+			jwt.WithValidMethods(c.cfg.TokenSigningMethods),
+		)
+	}
+	return jwt.ParseWithClaims(
+		raw,
+		claimStore,
+		c.AssociatedPublicKey,
+		jwt.WithIssuer(c.cfg.Issuer),
+		jwt.WithValidMethods(c.cfg.TokenSigningMethods),
+	)
 }
 
 // Potential response from introspection
@@ -326,4 +349,160 @@ func (c *oidpClientImpl) IntrospectToken(ctxt context.Context, token string) (bo
 	log.WithFields(logtags).Debugf("Raw introspect response %s", string(resp.Body()))
 
 	return response.Active, nil
+}
+
+// bearerTokenExtractor helper function to extract a token from a Authorization header
+func bearerTokenExtractor(header string) (string, error) {
+	// Check if header is too short
+	if len(header) < 6 {
+		return "", errors.New("header must be at least 6 characters long")
+	}
+
+	// Convert to lowercase for case-insensitive match
+	s := strings.ToLower(header)
+
+	// Find "bearer" substring
+	pos := strings.Index(s, "bearer")
+	if pos == -1 {
+		return "", errors.New("header does not contain 'bearer'")
+	}
+
+	// Calculate token start index (after "bearer")
+	tokenStart := pos + 6
+	if tokenStart >= len(header) {
+		return "", errors.New("no token found after 'bearer'")
+	}
+
+	// Extract token and remove leading whitespace
+	token := header[tokenStart:]
+	token = strings.TrimLeft(token, " \t\n\r\f\v")
+
+	// Validate token
+	if token == "" {
+		return "", errors.New("token is empty after removing leading whitespace")
+	}
+
+	return token, nil
+}
+
+// RestRequestOAuthTokenKey associated key for *jwt.Token when storing in request context
+type RestRequestOAuthTokenKey struct{}
+
+// GetJWTTokenFromContext parse out the JWT token recorded in the request context
+func GetJWTTokenFromContext(ctx context.Context) (*jwt.Token, error) {
+	if ctx.Value(RestRequestOAuthTokenKey{}) != nil {
+		v, ok := ctx.Value(RestRequestOAuthTokenKey{}).(*jwt.Token)
+		if ok {
+			return v, nil
+		}
+	}
+	return nil, nil
+}
+
+// JWTCheckMiddleware middleware for validating Oauth JWT tokens
+type JWTCheckMiddleware struct {
+	Component
+	core OpenIDProviderClient
+}
+
+/*
+DefineJWTCheckMiddleware define a new Oauth JWT validation middleware
+
+	@param providerClient OpenIDProviderClient - core client
+	@param logTags log.Fields - metadata fields to include in the logs
+	@returns new middleware
+*/
+func DefineJWTCheckMiddleware(
+	providerClient OpenIDProviderClient, logTags log.Fields,
+) JWTCheckMiddleware {
+	return JWTCheckMiddleware{
+		Component: Component{
+			LogTags: logTags,
+			LogTagModifiers: []LogMetadataModifier{
+				ModifyLogMetadataByRestRequestParam,
+			},
+		},
+		core: providerClient,
+	}
+}
+
+/*
+ParseAndValidateJWT is a support middleware to be used with Mux to parse and
+validate OAuth bearer token in the request.
+
+	@param next http.HandlerFunc - the core request handler function
+	@return middleware http.HandlerFunc
+*/
+func (m JWTCheckMiddleware) ParseAndValidateJWT(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		logTags := m.GetLogTagsForContext(r.Context())
+
+		authTokenHeader := r.Header.Get("Authorization")
+		if authTokenHeader == "" {
+			// Missing bearer token
+			resp := getStdRESTErrorMsg(
+				r.Context(), http.StatusUnauthorized, "Header 'Authorization' missing", "",
+			)
+			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
+			if err != nil {
+				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			}
+			return
+		}
+		bearerToken, err := bearerTokenExtractor(authTokenHeader)
+		if err != nil {
+			// Unable to extract the token
+			resp := getStdRESTErrorMsg(
+				r.Context(), http.StatusUnauthorized, "Malformed 'Authorization' header", err.Error(),
+			)
+			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
+			if err != nil {
+				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			}
+			return
+		}
+
+		parsedClaims := new(jwt.MapClaims)
+		parsedToken, err := m.core.ParseJWT(bearerToken, parsedClaims)
+		if err != nil {
+			// Invalid token
+			resp := getStdRESTErrorMsg(
+				r.Context(), http.StatusUnauthorized, "Invalid token", err.Error(),
+			)
+			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
+			if err != nil {
+				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			}
+			return
+		}
+
+		expireAt, err := parsedToken.Claims.GetExpirationTime()
+		if err != nil {
+			// Invalid expiration
+			resp := getStdRESTErrorMsg(
+				r.Context(), http.StatusUnauthorized, "Invalid token", err.Error(),
+			)
+			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
+			if err != nil {
+				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			}
+			return
+		}
+
+		if expireAt.UTC().Before(time.Now().UTC()) {
+			// Token expired
+			resp := getStdRESTErrorMsg(
+				r.Context(), http.StatusUnauthorized, "Expired token", "",
+			)
+			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
+			if err != nil {
+				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			}
+			return
+		}
+
+		// Valid token, proceed
+		newCtx := context.WithValue(r.Context(), RestRequestOAuthTokenKey{}, parsedToken)
+		next(w, r.WithContext(newCtx))
+	}
 }

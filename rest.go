@@ -176,13 +176,8 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 	}
 }
 
-/*
-ReadRequestIDFromContext reads the request ID from the request context if available
-
-	@param ctxt context.Context - a request context
-	@return if available, the request ID
-*/
-func (h RestAPIHandler) ReadRequestIDFromContext(ctxt context.Context) string {
+// readRequestIDFromContext reads the request ID from the request context if available
+func readRequestIDFromContext(ctxt context.Context) string {
 	if ctxt.Value(RestRequestParamKey{}) != nil {
 		v, ok := ctxt.Value(RestRequestParamKey{}).(RestRequestParam)
 		if ok {
@@ -193,13 +188,34 @@ func (h RestAPIHandler) ReadRequestIDFromContext(ctxt context.Context) string {
 }
 
 /*
+ReadRequestIDFromContext reads the request ID from the request context if available
+
+	@param ctxt context.Context - a request context
+	@return if available, the request ID
+*/
+func (h RestAPIHandler) ReadRequestIDFromContext(ctxt context.Context) string {
+	return readRequestIDFromContext(ctxt)
+}
+
+/*
 GetStdRESTSuccessMsg defines a standard success message
 
 	@param ctxt context.Context - a request context
 	@return the standard REST response
 */
 func (h RestAPIHandler) GetStdRESTSuccessMsg(ctxt context.Context) RestAPIBaseResponse {
-	return RestAPIBaseResponse{Success: true, RequestID: h.ReadRequestIDFromContext(ctxt)}
+	return RestAPIBaseResponse{Success: true, RequestID: readRequestIDFromContext(ctxt)}
+}
+
+// getStdRESTErrorMsg defines a standard error message
+func getStdRESTErrorMsg(
+	ctxt context.Context, respCode int, errMsg string, errDetail string,
+) RestAPIBaseResponse {
+	return RestAPIBaseResponse{
+		Success:   false,
+		RequestID: readRequestIDFromContext(ctxt),
+		Error:     &ErrorDetail{Code: respCode, Msg: errMsg, Detail: errDetail},
+	}
 }
 
 /*
@@ -214,23 +230,11 @@ GetStdRESTErrorMsg defines a standard error message
 func (h RestAPIHandler) GetStdRESTErrorMsg(
 	ctxt context.Context, respCode int, errMsg string, errDetail string,
 ) RestAPIBaseResponse {
-	return RestAPIBaseResponse{
-		Success:   false,
-		RequestID: h.ReadRequestIDFromContext(ctxt),
-		Error:     &ErrorDetail{Code: respCode, Msg: errMsg, Detail: errDetail},
-	}
+	return getStdRESTErrorMsg(ctxt, respCode, errMsg, errDetail)
 }
 
-/*
-WriteRESTResponse helper function to write out the REST API response
-
-	@param w http.ResponseWriter - response writer
-	@param respCode int - the response code
-	@param resp interface{} - the response body
-	@param headers map[string]string - the response header
-	@return whether write succeeded
-*/
-func (h RestAPIHandler) WriteRESTResponse(
+// writeRESTResponse helper function to write out the REST API response
+func writeRESTResponse(
 	w http.ResponseWriter, respCode int, resp interface{}, headers map[string]string,
 ) error {
 	w.Header().Set("content-type", "application/json")
@@ -248,6 +252,21 @@ func (h RestAPIHandler) WriteRESTResponse(
 		return err
 	}
 	return nil
+}
+
+/*
+WriteRESTResponse helper function to write out the REST API response
+
+	@param w http.ResponseWriter - response writer
+	@param respCode int - the response code
+	@param resp interface{} - the response body
+	@param headers map[string]string - the response header
+	@return whether write succeeded
+*/
+func (h RestAPIHandler) WriteRESTResponse(
+	w http.ResponseWriter, respCode int, resp interface{}, headers map[string]string,
+) error {
+	return writeRESTResponse(w, respCode, resp, headers)
 }
 
 // ==============================================================================

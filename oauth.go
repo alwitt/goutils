@@ -27,6 +27,7 @@ type openIDIssuerConfig struct {
 	JwksURI              string   `json:"jwks_uri"`
 	ClientRegistrationEP string   `json:"registration_endpoint"`
 	RevocationEP         string   `json:"revocation_endpoint"`
+	TokenSigningMethods  []string `json:"token_endpoint_auth_signing_alg_values_supported"`
 	TokenEPAuthMethods   []string `json:"token_endpoint_auth_methods_supported"`
 	ClaimsSupported      []string `json:"claims_supported"`
 }

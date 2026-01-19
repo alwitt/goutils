@@ -21,6 +21,10 @@ test: .prepare ## Run unittests
 one-test: .prepare ## Run one unittest
 	. .env; go test --count 1 -v -timeout 30s -run ^$(FILTER) github.com/alwitt/goutils/...
 
+.PHONY: mock
+mock: ## Define support mocks
+	@mockery
+
 .prepare: ## Prepare the project for local development
 	@pre-commit install
 	@pre-commit install-hooks
