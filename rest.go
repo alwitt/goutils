@@ -330,18 +330,37 @@ func installHTTPClientAuthMiddleware(
 	return nil
 }
 
+// HTTPClientTransportConfig HTTP client transport configuration
+type HTTPClientTransportConfig struct {
+	// CustomCA if provided, is the custom CA to use for the TLS session.
+	CustomCA *string `json:"http_tls_ca,omitempty"`
+}
+
+// setHTTPClientTransportParam helper function to install transport setting on HTTP client
+func setHTTPClientTransportParam(
+	client *resty.Client, config HTTPClientTransportConfig,
+) *resty.Client {
+	if config.CustomCA != nil {
+		client = client.SetClientRootCertificate(*config.CustomCA)
+	}
+
+	return client
+}
+
 /*
 DefineHTTPClient helper function to define a resty HTTP client
 
 	@param parentCtxt context.Context - caller context
 	@param retryConfig HTTPClientRetryConfig - HTTP client retry config
 	@param authConfig *HTTPClientAuthConfig - HTTP client auth config
+	@param transportConfig *HTTPClientTransportConfig - HTTP client transport config
 	@returns new resty client
 */
 func DefineHTTPClient(
 	parentCtxt context.Context,
 	retryConfig HTTPClientRetryConfig,
 	authConfig *HTTPClientAuthConfig,
+	transportConfig *HTTPClientTransportConfig,
 ) (*resty.Client, error) {
 	newClient := resty.New()
 
@@ -354,6 +373,11 @@ func DefineHTTPClient(
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Configure resty client transport setting
+	if transportConfig != nil {
+		newClient = setHTTPClientTransportParam(newClient, *transportConfig)
 	}
 
 	return newClient, nil

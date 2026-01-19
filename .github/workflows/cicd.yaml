@@ -59,6 +59,10 @@ jobs:
           UNITTEST_GCP_PROJECT_ID: cicd-389504
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-creds.json
           GOOGLE_APPLICATION_CREDENTIALS_VAL: ${{ secrets.GOOGLEAPPLICATIONCREDENTIALSVAL }}
+          UNITTEST_OID_ISSUER_URL: https://dev-kry4zc635rswwzkm.us.auth0.com
+          UNITTEST_OID_AUDIENCE: http://ut.goutils.hcm.org
+          UNITTEST_OIDP_CLIENT: ${{ secrets.UT_OIDP_CLIENT }}
+          UNITTEST_OIDP_CLIENT_CRED: ${{ secrets.UT_OIDP_CLIENT_CRED }}
         run: |
           echo "$GOOGLE_APPLICATION_CREDENTIALS_VAL" > /tmp/gcp-creds.json
           go test --count 1 -v -timeout 600s -short ./...
