@@ -165,7 +165,7 @@ func (q *asyncQueueImpl[V]) Pop(
 
 		// Proceed based on actual error
 		switch actualErr := err.(type) {
-		case ErrorNoDataAvailable:
+		case NoDataAvailableError:
 			// Queue empty
 			if !blocking {
 				return result, actualErr

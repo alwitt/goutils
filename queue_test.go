@@ -20,7 +20,7 @@ func TestSimpleQueueBasic(t *testing.T) {
 		assert.Equal(0, uut.Len())
 		_, err := uut.Pop()
 		assert.NotNil(err)
-		assert.IsType(ErrorNoDataAvailable{}, err)
+		assert.IsType(NoDataAvailableError{}, err)
 	}
 
 	// Case 1: enqueue and dequeue
@@ -62,7 +62,7 @@ func TestPriorityQueueBasic(t *testing.T) {
 		assert.Equal(0, uut.Len())
 		_, err := uut.Pop()
 		assert.NotNil(err)
-		assert.IsType(ErrorNoDataAvailable{}, err)
+		assert.IsType(NoDataAvailableError{}, err)
 	}
 
 	// Case 1: enqueue data

@@ -18,7 +18,7 @@ func TestMessageTopicOnePubOneSub(t *testing.T) {
 	defer cancel()
 
 	testTopic, err := getNewMessageTopicInstance(
-		ctxt, uuid.NewString(), log.Fields{"unit-testiung": "testing"},
+		ctxt, uuid.NewString(), log.Fields{"unit-testing": "testing"},
 	)
 	assert.Nil(err)
 
@@ -118,7 +118,7 @@ func TestMessageTopicOnePubMultiSub(t *testing.T) {
 	defer cancel()
 
 	testTopic, err := getNewMessageTopicInstance(
-		ctxt, uuid.NewString(), log.Fields{"unit-testiung": "testing"},
+		ctxt, uuid.NewString(), log.Fields{"unit-testing": "testing"},
 	)
 	assert.Nil(err)
 

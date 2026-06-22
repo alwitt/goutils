@@ -261,6 +261,7 @@ func TestRestAPIHandlerProcessStreamingEndpoints(t *testing.T) {
 			assert.Nil(json.Unmarshal([]byte(received), &parsed))
 			testMsgRX <- parsed
 		}
+		assert.Nil(scanner.Err())
 		log.Debug("Stopped scanner")
 	}()
 

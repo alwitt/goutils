@@ -60,7 +60,7 @@ func TestConditionNotifyOne(t *testing.T) {
 			defer waitCancel()
 			err := uut.Wait(waitCtx, testSignalChan)
 			assert.NotNil(err)
-			assert.IsType(ErrorTimeout{}, err)
+			assert.IsType(TimeoutError{}, err)
 			complete <- true
 		}()
 

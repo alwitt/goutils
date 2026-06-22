@@ -76,7 +76,7 @@ func (t *intervalTimerImpl) Start(
 	interval time.Duration, handler TimeoutHandler, oneShot bool,
 ) error {
 	if t.running {
-		return fmt.Errorf("already running")
+		return NewConsistencyError("already running", nil, false)
 	}
 	log.WithFields(t.LogTags).Infof("Starting with int %s", interval)
 	t.wg.Add(1)

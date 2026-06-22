@@ -28,7 +28,7 @@ func TestAsyncQueueBasic(t *testing.T) {
 		assert.Equal(0, uut.Len())
 		_, err = uut.Pop(utCtx, false, dataWaitSignal)
 		assert.NotNil(err)
-		assert.IsType(ErrorNoDataAvailable{}, err)
+		assert.IsType(NoDataAvailableError{}, err)
 	}
 
 	// Case 1: pass message
@@ -106,7 +106,7 @@ func TestAsyncPriorityQueueBasic(t *testing.T) {
 		assert.Equal(0, uut.Len())
 		_, err = uut.Pop(utCtx, false, dataWaitSignal)
 		assert.NotNil(err)
-		assert.IsType(ErrorNoDataAvailable{}, err)
+		assert.IsType(NoDataAvailableError{}, err)
 	}
 
 	// Case 1: pass message

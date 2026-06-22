@@ -107,7 +107,7 @@ func GetNewClientCredOAuthTokenManager(
 ) (OAuthTokenManager, error) {
 	validate := validator.New()
 	if err := validate.Struct(&params); err != nil {
-		return nil, err
+		return nil, NewBadInputError("invalid token manager configuration", err, false)
 	}
 
 	params.LogTags["idp-issuer"] = params.IDPIssuerURL
@@ -122,12 +122,18 @@ func GetNewClientCredOAuthTokenManager(
 	log.WithFields(params.LogTags).Infof("Fetching IDP config at %s", idpCfgEP)
 	resp, err := httpClient.R().SetResult(&idpConfig).Get(idpCfgEP)
 	if err != nil {
+		exitErr := NewRuntimeError("failed to call IDP for config", err, false)
 		log.WithError(err).WithFields(params.LogTags).Error("Failed to read IDP config")
 		workerCtxtCancel()
-		return nil, err
+		return nil, exitErr
 	}
 	if !resp.IsSuccess() {
-		err := fmt.Errorf("got status code %d when reading IDP config", resp.StatusCode())
+		err := NewHTTPRequestError(
+			resp.StatusCode(),
+			fmt.Sprintf("got status code %d when reading IDP config", resp.StatusCode()),
+			nil,
+			false,
+		)
 		log.WithError(err).WithFields(params.LogTags).Error("Failed to read IDP config")
 		workerCtxtCancel()
 		return nil, err
@@ -178,8 +184,9 @@ func GetNewClientCredOAuthTokenManager(
 		params.SupportTaskMetricsHelper,
 	)
 	if err != nil {
+		exitErr := NewRuntimeError("unable to define worker", err, false)
 		log.WithError(err).WithFields(params.LogTags).Error("Unable to define worker")
-		return nil, err
+		return nil, exitErr
 	}
 	instance.tasks = worker
 
@@ -189,15 +196,17 @@ func GetNewClientCredOAuthTokenManager(
 	if err := worker.AddToTaskExecutionMap(
 		reflect.TypeOf(getTokenRequest{}), instance.processGetToken,
 	); err != nil {
+		exitErr := NewRuntimeError("unable to install task definition", err, false)
 		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
-		return nil, err
+		return nil, exitErr
 	}
 
 	// -----------------------------------------------------------------------------------------
 	// Start worker
 	if err := worker.StartEventLoop(&instance.wg); err != nil {
+		exitErr := NewRuntimeError("unable to start support worker", err, false)
 		log.WithError(err).WithFields(params.LogTags).Error("Unable to start support worker")
-		return nil, err
+		return nil, exitErr
 	}
 
 	return instance, nil
@@ -228,25 +237,26 @@ func (c *clientCredOAuthTokenManager) GetToken(
 	request := getTokenRequest{timestamp: timestamp, resultCB: resultCB, errorCB: errorCB}
 	log.WithFields(logTags).Debug("Submitting 'GetToken' job")
 	if err := c.tasks.Submit(ctxt, request); err != nil {
+		exitErr := NewRuntimeError("failed to submit 'GetToken' job", err, false)
 		log.WithError(err).WithFields(logTags).Error("Failed to submit 'GetToken' job")
-		return "", err
+		return "", exitErr
 	}
 	log.WithFields(logTags).Debug("Submitted 'GetToken' job. AWaiting response")
 
 	select {
 	case <-ctxt.Done():
-		err := fmt.Errorf("request timed out waiting for response")
+		err := NewTimeoutError("request timed out waiting for response", ctxt.Err(), false)
 		log.WithError(err).WithFields(logTags).Error("Unable to get current active token")
 		return "", err
 	case err, ok := <-errorChan:
 		if !ok {
-			err = fmt.Errorf("error channel failure")
+			err = NewRuntimeError("error channel failure", nil, true)
 		}
 		log.WithError(err).WithFields(logTags).Error("Unable to get current active token")
 		return "", err
 	case token, ok := <-resultChan:
 		if !ok {
-			err := fmt.Errorf("result channel failure")
+			err := NewRuntimeError("result channel failure", nil, true)
 			log.WithError(err).WithFields(logTags).Error("Unable to get current active token")
 			return "", err
 		}
@@ -259,7 +269,10 @@ func (c *clientCredOAuthTokenManager) processGetToken(params interface{}) error 
 	if requestParams, ok := params.(getTokenRequest); ok {
 		return c.handleGetToken(requestParams)
 	}
-	err := fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(params))
+	err := UnexpectedTypeError{
+		Expected: reflect.TypeOf(getTokenRequest{}),
+		Gotten:   reflect.TypeOf(params),
+	}
 	logTags := c.GetLogTagsForContext(c.workerCtxt)
 	log.WithError(err).WithFields(logTags).Error("'GetToken' processing failure")
 	return err
@@ -296,13 +309,20 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 			SetResult(&newToken).
 			Post(c.idpConfig.TokenEP)
 		if err != nil {
+			exitErr := NewRuntimeError("token endpoint call failed", err, false)
 			log.WithError(err).WithFields(logTags).Error("Token fetch failure")
-			params.errorCB(err)
-			return err
+			params.errorCB(exitErr)
+			return exitErr
 		}
 		if !resp.IsSuccess() {
-			err := fmt.Errorf(
-				"token fetch returned status code %d '%s'", resp.StatusCode(), string(resp.Body()),
+			err := NewHTTPRequestError(
+				resp.StatusCode(),
+				fmt.Sprintf(
+					"token fetch returned status code %d '%s'",
+					resp.StatusCode(), string(resp.Body()),
+				),
+				nil,
+				false,
 			)
 			log.WithError(err).WithFields(logTags).Error("Token fetch failure")
 			params.errorCB(err)
@@ -312,6 +332,7 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 		log.WithFields(logTags).Debugf("Token response is %s", resp.Body())
 
 		if err := c.validate.Struct(&newToken); err != nil {
+			err := NewValidationError("invalid token response", err, false)
 			log.WithError(err).WithFields(logTags).Error("Invalid token response")
 			params.errorCB(err)
 			return err

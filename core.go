@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -149,9 +150,9 @@ func TimeBoundedWaitGroupWait(
 	case <-c:
 		return nil
 	case <-wgCtxt.Done():
-		return fmt.Errorf("associated context expired")
+		return NewTimeoutError("associated context expired", wgCtxt.Err(), false)
 	case <-time.After(timeout):
-		return fmt.Errorf("wait-group wait timed out")
+		return NewTimeoutError("wait-group wait timed out", nil, false)
 	}
 }
 
@@ -165,4 +166,44 @@ type HTTPRequestRetryParam struct {
 	InitialWaitTime time.Duration
 	// MaxWaitTime the max retry wait time
 	MaxWaitTime time.Duration
+}
+
+// ======================================================================================
+
+/*
+GetCallStack read the call stacking. This uses `runtime.Callers` to get a list of
+return program counters.
+
+By default, the call stack will skip `runtime.Callers` and `GetCallStack`. Optionally,
+the user can skip additional layer to exclude them from the list.
+
+	@param skip int - the number of call stack layers to skip
+	@returns the list of return program counters
+*/
+func GetCallStack(skip int) []uintptr {
+	var pcs [32]uintptr
+	n := runtime.Callers(2+skip, pcs[:])
+	return pcs[:n]
+}
+
+/*
+RenderCallStack render a call stack given the list of return program counters
+
+	@param stack []uintptr - list of return program counters representing the call stack
+	@returns the call stack
+*/
+func RenderCallStack(stack []uintptr) string {
+	if len(stack) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	frames := runtime.CallersFrames(stack)
+	for {
+		f, more := frames.Next()
+		fmt.Fprintf(&b, "%s\n\t%s:%d\n", f.Function, f.File, f.Line)
+		if !more {
+			break
+		}
+	}
+	return b.String()
 }

@@ -125,7 +125,7 @@ func (b *messageBusImpl) GetTopic(_ context.Context, topicName string) (MessageT
 		return existing, nil
 	}
 
-	return nil, fmt.Errorf("topic is unknown")
+	return nil, NewNotFoundError(fmt.Sprintf("unknown topic '%s'", topicName), nil, false)
 }
 
 /*
@@ -141,7 +141,7 @@ func (b *messageBusImpl) DeleteTopic(ctxt context.Context, topicName string) err
 	defer b.lock.RUnlock()
 
 	if _, ok := b.topics[topicName]; !ok {
-		return fmt.Errorf("topic is unknown")
+		return NewNotFoundError(fmt.Sprintf("unknown topic '%s'", topicName), nil, false)
 	}
 
 	delete(b.topics, topicName)
@@ -308,7 +308,9 @@ func (t *messageTopicImpl) CreateSubscription(
 	defer t.lock.Unlock()
 
 	if _, ok := t.subscriptions[subscriber]; ok {
-		return nil, fmt.Errorf("subscription '%s' already exist", subscriber)
+		return nil, NewAlreadyExistsError(
+			fmt.Sprintf("subscription '%s' already exists", subscriber), nil, false,
+		)
 	}
 
 	msgBuffer := make(chan interface{}, bufferLen)
@@ -337,7 +339,7 @@ func (t *messageTopicImpl) DeleteSubscription(ctxt context.Context, subscriber s
 
 	existing, ok := t.subscriptions[subscriber]
 	if !ok {
-		return fmt.Errorf("unknown subscription '%s'", subscriber)
+		return NewNotFoundError(fmt.Sprintf("unknown subscription '%s'", subscriber), nil, false)
 	}
 	log.
 		WithFields(logTags).

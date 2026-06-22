@@ -60,7 +60,7 @@ func (q *simpleQueue[V]) Len() int {
 func (q *simpleQueue[V]) Push(data V) error {
 	dataType := reflect.TypeOf(data)
 	if dataType != q.targetType {
-		return ErrorUnexpectedType{Expected: q.targetType, Gotten: dataType}
+		return UnexpectedTypeError{Expected: q.targetType, Gotten: dataType}
 	}
 	_ = q.buffer.PushBack(data)
 	return nil
@@ -72,7 +72,7 @@ func (q *simpleQueue[V]) Pop() (V, error) {
 
 	// No data available
 	if q.buffer.Len() == 0 {
-		return val, ErrorNoDataAvailable{}
+		return val, NoDataAvailableError{}
 	}
 
 	// Pop first element
@@ -82,7 +82,7 @@ func (q *simpleQueue[V]) Pop() (V, error) {
 	val, ok = raw.(V)
 
 	if !ok {
-		return val, ErrorUnexpectedType{Expected: q.targetType, Gotten: reflect.TypeOf(raw)}
+		return val, UnexpectedTypeError{Expected: q.targetType, Gotten: reflect.TypeOf(raw)}
 	}
 
 	return val, nil
@@ -171,7 +171,7 @@ func (q *priorityQueue[V]) Len() int {
 func (q *priorityQueue[V]) Push(data V) error {
 	dataType := reflect.TypeOf(data)
 	if dataType != q.targetType {
-		return ErrorUnexpectedType{Expected: q.targetType, Gotten: dataType}
+		return UnexpectedTypeError{Expected: q.targetType, Gotten: dataType}
 	}
 	heap.Push(q.buffer, data)
 	return nil
@@ -183,7 +183,7 @@ func (q *priorityQueue[V]) Pop() (V, error) {
 
 	// No data available
 	if q.buffer.Len() == 0 {
-		return val, ErrorNoDataAvailable{}
+		return val, NoDataAvailableError{}
 	}
 
 	// Pop highest priority
@@ -192,7 +192,7 @@ func (q *priorityQueue[V]) Pop() (V, error) {
 	val, ok = raw.(V)
 
 	if !ok {
-		return val, ErrorUnexpectedType{Expected: reflect.TypeOf(val), Gotten: reflect.TypeOf(raw)}
+		return val, UnexpectedTypeError{Expected: reflect.TypeOf(val), Gotten: reflect.TypeOf(raw)}
 	}
 
 	return val, nil

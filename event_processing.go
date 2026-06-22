@@ -122,9 +122,13 @@ func (p *taskProcessorImpl) Submit(ctx context.Context, newTaskParam interface{}
 		if p.metrics != nil {
 			p.metrics.RecordSubmit(p.name, false)
 		}
-		return ctx.Err()
+		return NewTimeoutError("calling context expired", ctx.Err(), false)
 	case <-p.operationContext.Done():
-		return p.operationContext.Err()
+		return NewShutdownError(
+			fmt.Sprintf("[TP %s] task processor has stopped", p.name),
+			p.operationContext.Err(),
+			false,
+		)
 	}
 }
 
@@ -192,8 +196,12 @@ func (p *taskProcessorImpl) processNewTaskParam(newTaskParam interface{}) error 
 	if theHandler, ok := p.getHandler(newTaskParam); ok {
 		return theHandler(newTaskParam)
 	}
-	return fmt.Errorf(
-		"[TP %s] No matching handler found for %s", p.name, reflect.TypeOf(newTaskParam),
+	return NewNotFoundError(
+		fmt.Sprintf(
+			"[TP %s] no handler registered for type '%s'", p.name, reflect.TypeOf(newTaskParam),
+		),
+		nil,
+		false,
 	)
 }
 

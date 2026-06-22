@@ -530,10 +530,12 @@ func (c *pubsubReqRespClient) Request(
 
 	// Sanity check the request parameters
 	if callParam.ExpectedResponsesCount < 1 {
-		return "", fmt.Errorf("request which require no response does not fit supported usage")
+		return "", NewBadInputError(
+			"request which require no response does not fit supported usage", nil, false,
+		)
 	}
 	if callParam.RespHandler == nil || callParam.TimeoutHandler == nil {
-		return "", fmt.Errorf("request must define all handler callbacks")
+		return "", NewBadInputError("request must define all handler callbacks", nil, false)
 	}
 
 	// Define new outbound request
@@ -571,13 +573,14 @@ func (c *pubsubReqRespClient) Request(
 		metadata:  metadata,
 	}
 	if err := c.outboundProcessor.Submit(ctxt, taskParams); err != nil {
+		exitErr := NewRuntimeError("Failed to submit 'Request' job", err, false)
 		log.
 			WithError(err).
 			WithFields(logTags).
 			WithField("target-id", targetID).
 			WithField("request-id", requestID).
 			Error("Failed to submit 'Request' job")
-		return requestID, err
+		return requestID, exitErr
 	}
 
 	// Wait for all responses to be processed, if blocking
@@ -590,7 +593,7 @@ func (c *pubsubReqRespClient) Request(
 
 		select {
 		case <-ctxt.Done():
-			err := fmt.Errorf("request timed out waiting for all responses")
+			err := NewTimeoutError("request timed out waiting for all responses", ctxt.Err(), false)
 			log.
 				WithError(err).
 				WithFields(logTags).
@@ -614,7 +617,9 @@ func (c *pubsubReqRespClient) request(params interface{}) error {
 	if requestParams, ok := params.(rrRequestPayload); ok {
 		return c.handleRequest(requestParams)
 	}
-	err := fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(params))
+	err := UnexpectedTypeError{
+		Expected: reflect.TypeOf(rrRequestPayload{}), Gotten: reflect.TypeOf(params),
+	}
 	logTags := c.GetLogTagsForContext(c.processorContext)
 	log.WithError(err).WithFields(logTags).Error("'Request' processing failure")
 	return err
@@ -718,13 +723,14 @@ func (c *pubsubReqRespClient) Respond(
 		metadata: metadata,
 	}
 	if err := c.inboundProcessor.Submit(ctxt, taskParams); err != nil {
+		exitErr := NewRuntimeError("Failed to submit 'Respond' job", err, false)
 		log.
 			WithError(err).
 			WithFields(logTags).
 			WithField("orig-target-id", originalReq.TargetID).
 			WithField("orig-request-id", originalReq.RequestID).
 			Error("Failed to submit 'Respond' job")
-		return err
+		return exitErr
 	}
 
 	// Wait for response to be sent
@@ -737,7 +743,7 @@ func (c *pubsubReqRespClient) Respond(
 
 		select {
 		case <-ctxt.Done():
-			err := fmt.Errorf("request timed out waiting response transmit")
+			err := NewTimeoutError("request timed out waiting response transmit", ctxt.Err(), false)
 			log.
 				WithError(err).
 				WithFields(logTags).
@@ -761,7 +767,9 @@ func (c *pubsubReqRespClient) respond(params interface{}) error {
 	if responseParams, ok := params.(rrResponsePayload); ok {
 		return c.handleRespond(responseParams)
 	}
-	err := fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(params))
+	err := UnexpectedTypeError{
+		Expected: reflect.TypeOf(rrResponsePayload{}), Gotten: reflect.TypeOf(params),
+	}
 	logTags := c.GetLogTagsForContext(c.processorContext)
 	log.WithError(err).WithFields(logTags).Error("'Respond' processing failure")
 	return err
@@ -841,24 +849,28 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 
 	requestID, ok := metadata[rrMsgAttributeNameRequestID]
 	if !ok {
-		err := fmt.Errorf("message did not come with request ID")
+		err := NewValidationError("message did not come with request ID", nil, false)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
 		return err
 	}
 
 	senderID, ok := metadata[rrMsgAttributeNameSenderID]
 	if !ok {
-		err := fmt.Errorf("message did not come with sender ID")
+		err := NewValidationError("message did not come with sender ID", nil, false)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
 		return err
 	}
 
 	if msgTargetID, ok := metadata[rrMsgAttributeNameTargetID]; !ok {
-		err := fmt.Errorf("message did not come with target ID")
+		err := NewValidationError("message did not come with target ID", nil, false)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
 		return err
 	} else if msgTargetID != c.targetID {
-		err := fmt.Errorf("message target ID does not match client: %s =/= %s", msgTargetID, c.targetID)
+		err := NewValidationError(
+			fmt.Sprintf("message target ID does not match client: %s =/= %s", msgTargetID, c.targetID),
+			nil,
+			false,
+		)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
 		return err
 	}
@@ -891,13 +903,16 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 
 		// Make the request
 		if err := c.inboundProcessor.Submit(ctxt, taskParams); err != nil {
+			exitErr := NewRuntimeError(
+				"Failed to submit 'ReceivePubSubMsg' job for inbound request", err, false,
+			)
 			log.
 				WithError(err).
 				WithFields(logTags).
 				WithField("sender-id", senderID).
 				WithField("request-id", requestID).
 				Error("Failed to submit 'ReceivePubSubMsg' job for inbound request")
-			return err
+			return exitErr
 		}
 	} else {
 		// An inbound response
@@ -919,13 +934,16 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 
 		// Make the request
 		if err := c.outboundProcessor.Submit(ctxt, taskParams); err != nil {
+			exitErr := NewRuntimeError(
+				"Failed to submit 'ReceivePubSubMsg' job for inbound response", err, false,
+			)
 			log.
 				WithError(err).
 				WithFields(logTags).
 				WithField("sender-id", senderID).
 				WithField("request-id", requestID).
 				Error("Failed to submit 'ReceivePubSubMsg' job for inbound response")
-			return err
+			return exitErr
 		}
 	}
 
@@ -940,7 +958,9 @@ func (c *pubsubReqRespClient) receiveInboundRequestMsg(params interface{}) error
 	if inboundReqParams, ok := params.(rrInboundRequestPayload); ok {
 		return c.handleInboundRequest(inboundReqParams)
 	}
-	err := fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(params))
+	err := UnexpectedTypeError{
+		Expected: reflect.TypeOf(rrInboundRequestPayload{}), Gotten: reflect.TypeOf(params),
+	}
 	logTags := c.GetLogTagsForContext(c.processorContext)
 	log.
 		WithError(err).
@@ -955,7 +975,7 @@ func (c *pubsubReqRespClient) handleInboundRequest(params rrInboundRequestPayloa
 	logTags := c.GetLogTagsForContext(lclCtxt)
 
 	if c.inboundRequestHandler == nil {
-		err := fmt.Errorf("no handler installed for inbound requests")
+		err := NewRuntimeError("no handler installed for inbound requests", nil, false)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound request")
 		return err
 	}
@@ -991,7 +1011,9 @@ func (c *pubsubReqRespClient) receiveInboundResponseMsg(params interface{}) erro
 	if inboundRespParams, ok := params.(rrInboundResponsePayload); ok {
 		return c.handleInboundResponse(inboundRespParams)
 	}
-	err := fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(params))
+	err := UnexpectedTypeError{
+		Expected: reflect.TypeOf(rrInboundResponsePayload{}), Gotten: reflect.TypeOf(params),
+	}
 	logTags := c.GetLogTagsForContext(c.processorContext)
 	log.
 		WithError(err).
@@ -1006,7 +1028,11 @@ func (c *pubsubReqRespClient) handleInboundResponse(params rrInboundResponsePayl
 
 	originalReq, ok := c.outboundRequests[params.requestID]
 	if !ok {
-		err := fmt.Errorf("request ID '%s' did not originate from this client", params.requestID)
+		err := NewNotFoundError(
+			fmt.Sprintf("request ID '%s' did not originate from this client", params.requestID),
+			nil,
+			false,
+		)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound response")
 		return err
 	}
@@ -1074,11 +1100,12 @@ func (c *pubsubReqRespClient) RequestTimeoutCheck(ctxt context.Context) error {
 	if err := c.outboundProcessor.Submit(
 		ctxt, rrRequestTimeoutCheckPayload{timestamp: currentTime},
 	); err != nil {
+		exitErr := NewRuntimeError("Failed to submit 'RequestTimeoutCheck' job", err, false)
 		log.
 			WithError(err).
 			WithFields(logTags).
 			Error("Failed to submit 'RequestTimeoutCheck' job")
-		return err
+		return exitErr
 	}
 
 	return nil
@@ -1089,7 +1116,9 @@ func (c *pubsubReqRespClient) requestTimeoutCheck(params interface{}) error {
 	if requestParams, ok := params.(rrRequestTimeoutCheckPayload); ok {
 		return c.handleRequestTimeoutCheck(requestParams)
 	}
-	err := fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(params))
+	err := UnexpectedTypeError{
+		Expected: reflect.TypeOf(rrRequestTimeoutCheckPayload{}), Gotten: reflect.TypeOf(params),
+	}
 	logTags := c.GetLogTagsForContext(c.processorContext)
 	log.WithError(err).WithFields(logTags).Error("'RequestTimeoutCheck' processing failure")
 	return err

@@ -2,6 +2,7 @@ package goutils
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -361,11 +362,14 @@ func (c *metricsCollectorImpl) InstallCustomCounterVecMetrics(
 		prometheus.CounterOpts{Name: metricsName, Help: metricsHelpMessage}, metricsLabels,
 	)
 	if err := c.prometheus.Register(newMetricsTracker); err != nil {
+		exitErr := NewRuntimeError(
+			fmt.Sprintf("Failed to register new metrics '%s'", metricsName), err, false,
+		)
 		log.
 			WithError(err).
 			WithFields(logTags).
 			Errorf("Failed to register new metrics '%s'", metricsName)
-		return nil, err
+		return nil, exitErr
 	}
 	return newMetricsTracker, nil
 }
@@ -378,11 +382,14 @@ func (c *metricsCollectorImpl) InstallCustomGaugeVecMetrics(
 		prometheus.GaugeOpts{Name: metricsName, Help: metricsHelpMessage}, metricsLabels,
 	)
 	if err := c.prometheus.Register(newMetricsTracker); err != nil {
+		exitErr := NewRuntimeError(
+			fmt.Sprintf("Failed to register new metrics '%s'", metricsName), err, false,
+		)
 		log.
 			WithError(err).
 			WithFields(logTags).
 			Errorf("Failed to register new metrics '%s'", metricsName)
-		return nil, err
+		return nil, exitErr
 	}
 	return newMetricsTracker, nil
 }
