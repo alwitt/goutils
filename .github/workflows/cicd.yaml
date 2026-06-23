@@ -46,6 +46,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      redis:
+        image: redis:8.8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v6
 
@@ -63,6 +74,9 @@ jobs:
           UNITTEST_OID_AUDIENCE: http://ut.goutils.hcm.org
           UNITTEST_OIDP_CLIENT: ${{ secrets.UT_OIDP_CLIENT }}
           UNITTEST_OIDP_CLIENT_CRED: ${{ secrets.UT_OIDP_CLIENT_CRED }}
+          UNITTEST_REDIS_HOST: 127.0.0.1
+          UNITTEST_REDIS_PORT: "6379"
+          UNITTEST_REDIS_DB: "1"
         run: |
           echo "$GOOGLE_APPLICATION_CREDENTIALS_VAL" > /tmp/gcp-creds.json
           go test --count 1 -v -timeout 600s -short ./...

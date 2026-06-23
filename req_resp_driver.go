@@ -55,20 +55,23 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 	// Parse the message to determine the request
 	parsed, err := d.PayloadParser(msg.Payload)
 	if err != nil {
+		exitErr := NewBadInputError("unable to parse request payload", err, true)
 		log.
 			WithError(err).
 			WithFields(logTag).
 			WithField("request-sender", msg.SenderID).
 			WithField("request-id", msg.RequestID).
 			Error("Unable to parse request payload")
-		return err
+		return exitErr
 	}
 
 	// Find the associated processing handler
 	requestMsgType := reflect.TypeOf(parsed)
 	requestHandler, ok := d.executionMap[requestMsgType]
 	if !ok {
-		err := fmt.Errorf("unknown supported request type '%s'", requestMsgType)
+		err := NewConsistencyError(
+			fmt.Sprintf("unknown supported request type '%s'", requestMsgType), nil, true,
+		)
 		log.
 			WithError(err).
 			WithFields(logTag).
@@ -82,6 +85,7 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 	// Process request
 	response, err := requestHandler(ctxt, parsed, msg)
 	if err != nil {
+		exitErr := NewRuntimeError("request processing failed", err, true)
 		log.
 			WithError(err).
 			WithFields(logTag).
@@ -89,12 +93,13 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 			WithField("request-id", msg.RequestID).
 			WithField("request-type", requestMsgType).
 			Error("Request processing failed")
-		return err
+		return exitErr
 	}
 
 	// Build the response
 	respMsg, err := json.Marshal(&response)
 	if err != nil {
+		exitErr := NewRuntimeError("failed to prepare response", err, true)
 		log.
 			WithError(err).
 			WithFields(logTag).
@@ -102,11 +107,12 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 			WithField("request-id", msg.RequestID).
 			WithField("request-type", requestMsgType).
 			Error("Failed to prepare response")
-		return err
+		return exitErr
 	}
 
 	// Send the response
 	if err := d.Client.Respond(ctxt, msg, respMsg, nil, false); err != nil {
+		exitErr := NewRuntimeError("failed to send response", err, false)
 		log.
 			WithError(err).
 			WithFields(logTag).
@@ -114,7 +120,7 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 			WithField("request-id", msg.RequestID).
 			WithField("request-type", requestMsgType).
 			Error("Failed to send response")
-		return err
+		return exitErr
 	}
 
 	return nil
@@ -154,7 +160,9 @@ func (d *RequestResponseDriver) MakeRequest(
 	// Handler in case of request timeout
 	timeoutChan := make(chan error, 2)
 	timeoutCB := func(_ context.Context) error {
-		err := fmt.Errorf("%s", requestInstanceName)
+		err := NewTimeoutError(
+			fmt.Sprintf("no responses received for %s before timeout", requestInstanceName), nil, true,
+		)
 		log.
 			WithError(err).
 			WithFields(logTags).
@@ -177,13 +185,14 @@ func (d *RequestResponseDriver) MakeRequest(
 	// Make the call
 	requestID, err := d.Client.Request(ctxt, targetID, requestMsg, requestMeta, callParam)
 	if err != nil {
+		exitErr := NewRuntimeError("failed to send request", err, false)
 		log.
 			WithError(err).
 			WithFields(logTags).
 			WithField("request-id", requestID).
 			WithField("request-instance", requestInstanceName).
 			Error("Failed to send request")
-		return nil, err
+		return nil, exitErr
 	}
 	log.
 		WithFields(logTags).
@@ -197,11 +206,11 @@ func (d *RequestResponseDriver) MakeRequest(
 		select {
 		// Execution context timeout
 		case <-ctxt.Done():
-			return nil, fmt.Errorf("execution context timed out")
+			return nil, NewTimeoutError("execution context terminated", ctxt.Err(), true)
 
 		// Request timeout
 		case <-timeoutChan:
-			err = fmt.Errorf("timeout channel returned erroneous results")
+			err := NewRuntimeError("timeout channel returned erroneous results", nil, true)
 			log.
 				WithError(err).
 				WithFields(logTags).
@@ -213,7 +222,7 @@ func (d *RequestResponseDriver) MakeRequest(
 		// Response successful
 		case resp, ok := <-respReceiveChan:
 			if !ok {
-				err := fmt.Errorf("response channel returned erroneous results")
+				err := NewRuntimeError("response channel returned erroneous results", nil, true)
 				log.
 					WithError(err).
 					WithFields(logTags).
@@ -235,13 +244,14 @@ func (d *RequestResponseDriver) MakeRequest(
 		// Parse the response
 		parsed, err := d.PayloadParser(rawResponse.Payload)
 		if err != nil {
+			exitErr := NewConsistencyError("unable to parse response", err, true)
 			log.
 				WithError(err).
 				WithFields(logTags).
 				WithField("request-id", requestID).
 				WithField("request-instance", requestInstanceName).
 				Error("Unable to parse response")
-			return nil, err
+			return nil, exitErr
 		}
 		results = append(results, parsed)
 	}

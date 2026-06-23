@@ -21,9 +21,21 @@ test: .prepare ## Run unittests
 one-test: .prepare ## Run one unittest
 	. .env; go test --count 1 -v -timeout 30s -run ^$(FILTER) github.com/alwitt/goutils/...
 
+.PHONY: test-package
+test-package: .prepare ## Run all tests in a package. Set `PKG` as target package
+	. .env; go test --count 1 -timeout 60s -short github.com/alwitt/goutils/$(PKG)/...
+
 .PHONY: mock
 mock: ## Define support mocks
 	@mockery
+
+.PHONY: up
+up: .prepare ## Start docker compose development stack
+	docker compose -f docker/docker-compose.yml up -d
+
+.PHONY: down
+down: .prepare ## Stop docker compose development stack
+	docker compose -f docker/docker-compose.yml down
 
 .prepare: ## Prepare the project for local development
 	@pre-commit install

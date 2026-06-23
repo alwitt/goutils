@@ -2,7 +2,6 @@ package goutils
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -161,7 +160,7 @@ GetExponentialSeq define an exponential sequencer
 */
 func GetExponentialSeq(initial float64, growthRate float64) (Sequencer, error) {
 	if growthRate < 1.0 {
-		return nil, fmt.Errorf("growth rate of exponential sequence must be > 1.0")
+		return nil, NewBadInputError("growth rate of exponential sequence must be > 1.0", nil, true)
 	}
 	return &exponentialSequence{current: initial, growthRate: growthRate}, nil
 }

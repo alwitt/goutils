@@ -199,6 +199,9 @@ func NewShutdownError(message string, core error, getCallStack bool) ShutdownErr
 	return ShutdownError{BaseError: base}
 }
 
+// ======================================================================================
+// HTTP Client Errors
+
 // HTTPRequestError an outbound HTTP request returned a non-success status code
 type HTTPRequestError struct {
 	BaseError
@@ -216,6 +219,9 @@ func NewHTTPRequestError(
 	}
 	return HTTPRequestError{BaseError: base, StatusCode: statusCode}
 }
+
+// ======================================================================================
+// GCP PubSub Errors
 
 // PubSubError wraps an error returned by the Google PubSub backend, distinguishing
 // it from errors raised by the wrapper's own logic.
@@ -257,4 +263,19 @@ type UnexpectedTypeError struct {
 // Error implement error interface
 func (e UnexpectedTypeError) Error() string {
 	return fmt.Sprintf("expected '%s' not '%s'", e.Expected, e.Gotten)
+}
+
+// ======================================================================================
+// REDIS Errors
+
+// RedisError wraps an error returned by REDIS client
+type RedisError struct{ BaseError }
+
+// NewRedisError builds a RedisError, optionally capturing the call stack.
+func NewRedisError(message string, core error, getCallStack bool) RedisError {
+	base := BaseError{Name: "RedisError", Message: message, Core: core}
+	if getCallStack {
+		base.stack = GetCallStack(1)
+	}
+	return RedisError{BaseError: base}
 }
