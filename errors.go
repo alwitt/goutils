@@ -21,8 +21,8 @@ type BaseError struct {
 	Message string
 	// Core is the wrapped underlying error, if any.
 	Core error
-	// stack holds the program counters captured at construction, if requested.
-	stack []uintptr
+	// Stack holds the program counters captured at construction, if requested.
+	Stack []uintptr
 }
 
 // Error implements the error interface, rendering "{name}: {message} [{core}]".
@@ -47,7 +47,7 @@ func (e BaseError) Unwrap() error {
 // StackTrace returns the captured call stack as formatted text, or "" if no stack
 // was captured at construction.
 func (e BaseError) StackTrace() string {
-	return RenderCallStack(e.stack)
+	return RenderCallStack(e.Stack)
 }
 
 // Format supports fmt verbs. "%+v" appends the captured stack trace (when present),
@@ -80,7 +80,7 @@ type stackCarrier interface {
 
 // callStack exposes the captured program counters to in-package chain walkers.
 func (e BaseError) callStack() []uintptr {
-	return e.stack
+	return e.Stack
 }
 
 // DeepestErrorWithTrace walks err's Unwrap chain and returns the deepest error (nearest
@@ -110,7 +110,7 @@ type BadInputError struct{ BaseError }
 func NewBadInputError(message string, core error, getCallStack bool) BadInputError {
 	base := BaseError{Name: "BadInputError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return BadInputError{BaseError: base}
 }
@@ -122,7 +122,7 @@ type ValidationError struct{ BaseError }
 func NewValidationError(message string, core error, getCallStack bool) ValidationError {
 	base := BaseError{Name: "ValidationError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return ValidationError{BaseError: base}
 }
@@ -134,7 +134,7 @@ type ConsistencyError struct{ BaseError }
 func NewConsistencyError(message string, core error, getCallStack bool) ConsistencyError {
 	base := BaseError{Name: "ConsistencyError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return ConsistencyError{BaseError: base}
 }
@@ -146,7 +146,7 @@ type RuntimeError struct{ BaseError }
 func NewRuntimeError(message string, core error, getCallStack bool) RuntimeError {
 	base := BaseError{Name: "RuntimeError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return RuntimeError{BaseError: base}
 }
@@ -158,7 +158,7 @@ type TimeoutError struct{ BaseError }
 func NewTimeoutError(message string, core error, getCallStack bool) TimeoutError {
 	base := BaseError{Name: "TimeoutError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return TimeoutError{BaseError: base}
 }
@@ -170,7 +170,7 @@ type NotFoundError struct{ BaseError }
 func NewNotFoundError(message string, core error, getCallStack bool) NotFoundError {
 	base := BaseError{Name: "NotFoundError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return NotFoundError{BaseError: base}
 }
@@ -182,7 +182,7 @@ type AlreadyExistsError struct{ BaseError }
 func NewAlreadyExistsError(message string, core error, getCallStack bool) AlreadyExistsError {
 	base := BaseError{Name: "AlreadyExistsError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return AlreadyExistsError{BaseError: base}
 }
@@ -194,7 +194,7 @@ type ShutdownError struct{ BaseError }
 func NewShutdownError(message string, core error, getCallStack bool) ShutdownError {
 	base := BaseError{Name: "ShutdownError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return ShutdownError{BaseError: base}
 }
@@ -215,7 +215,7 @@ func NewHTTPRequestError(
 ) HTTPRequestError {
 	base := BaseError{Name: "HTTPRequestError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return HTTPRequestError{BaseError: base, StatusCode: statusCode}
 }
@@ -235,7 +235,7 @@ type PubSubError struct {
 func NewPubSubError(operation, message string, core error, getCallStack bool) PubSubError {
 	base := BaseError{Name: "PubSubError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return PubSubError{BaseError: base, Operation: operation}
 }
@@ -275,7 +275,7 @@ type RedisError struct{ BaseError }
 func NewRedisError(message string, core error, getCallStack bool) RedisError {
 	base := BaseError{Name: "RedisError", Message: message, Core: core}
 	if getCallStack {
-		base.stack = GetCallStack(1)
+		base.Stack = GetCallStack(1)
 	}
 	return RedisError{BaseError: base}
 }
