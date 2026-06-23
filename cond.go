@@ -116,7 +116,7 @@ func (c *conditionImpl) Wait(ctx context.Context, wakeUp chan bool) error {
 	select {
 	case <-ctx.Done():
 		deregister()
-		return NewTimeoutError("calling context ended", ctx.Err(), false)
+		return NewTimeoutError("calling context ended", ctx.Err(), true)
 	case <-wakeUp:
 	}
 

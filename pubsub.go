@@ -201,7 +201,7 @@ func (p *pubsubClientImpl) updateLocalTopicCacheCore(ctxt context.Context) error
 		}
 		if err != nil {
 			log.WithError(err).WithFields(logTag).Error("Topic iterator query failure")
-			return NewPubSubError("ListTopics", "topic iterator query failure", err, false)
+			return NewPubSubError("ListTopics", "topic iterator query failure", err, true)
 		}
 		p.topics[topicEntry.ID()] = topicEntry
 		log.WithFields(logTag).Debugf("Found topic '%s'", topicEntry.ID())
@@ -238,7 +238,7 @@ func (p *pubsubClientImpl) UpdateLocalSubscriptionCache(ctxt context.Context) er
 		if err != nil {
 			log.WithError(err).WithFields(logTag).Error("Subscription iterator query failure")
 			return NewPubSubError(
-				"ListSubscriptions", "subscription iterator query failure", err, false,
+				"ListSubscriptions", "subscription iterator query failure", err, true,
 			)
 		}
 		p.subscriptions[subEntry.ID()] = subEntry
@@ -297,7 +297,7 @@ func (p *pubsubClientImpl) CreateTopic(
 	if err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Topic '%s' creation failed", topic)
 		return NewPubSubError(
-			"CreateTopic", fmt.Sprintf("topic '%s' creation failed", topic), err, false,
+			"CreateTopic", fmt.Sprintf("topic '%s' creation failed", topic), err, true,
 		)
 	}
 	log.WithFields(logTag).Infof("Created topic '%s'", topic)
@@ -329,7 +329,7 @@ func (p *pubsubClientImpl) getTopicHandle(
 		t, ok = p.topics[topic]
 		if !ok {
 			// Topic is really missing
-			err := NewNotFoundError(fmt.Sprintf("topic '%s' is unknown", topic), nil, false)
+			err := NewNotFoundError(fmt.Sprintf("topic '%s' is unknown", topic), nil, true)
 			return nil, err
 		}
 	}
@@ -361,7 +361,7 @@ func (p *pubsubClientImpl) DeleteTopic(ctxt context.Context, topic string) error
 	if err := topicHandle.Delete(ctxt); err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Unable to delete topic '%s'", topic)
 		return NewPubSubError(
-			"DeleteTopic", fmt.Sprintf("unable to delete topic '%s'", topic), err, false,
+			"DeleteTopic", fmt.Sprintf("unable to delete topic '%s'", topic), err, true,
 		)
 	}
 	log.WithFields(logTag).Infof("Deleted topic '%s'", topic)
@@ -396,7 +396,7 @@ func (p *pubsubClientImpl) GetTopic(ctxt context.Context, topic string) (pubsub.
 	if err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Unable to read topic '%s' config", topic)
 		return pubsub.TopicConfig{}, NewPubSubError(
-			"GetTopicConfig", fmt.Sprintf("unable to read topic '%s' config", topic), err, false,
+			"GetTopicConfig", fmt.Sprintf("unable to read topic '%s' config", topic), err, true,
 		)
 	}
 	log.WithFields(logTag).Infof("Read topic '%s' config", topic)
@@ -429,7 +429,7 @@ func (p *pubsubClientImpl) UpdateTopic(
 	if _, err := topicHandle.Update(ctxt, newConfig); err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Unable to update topic '%s'", topic)
 		return NewPubSubError(
-			"UpdateTopic", fmt.Sprintf("unable to update topic '%s'", topic), err, false,
+			"UpdateTopic", fmt.Sprintf("unable to update topic '%s'", topic), err, true,
 		)
 	}
 	log.WithFields(logTag).Infof("Updated topic '%s' config", topic)
@@ -475,12 +475,15 @@ func (p *pubsubClientImpl) CreateSubscription(
 		log.WithFields(logTag).Debugf("Creating subscription '%s'", subscription)
 		subHandle, err := p.client.CreateSubscription(ctxt, subscription, config)
 		if err != nil {
-			log.WithError(err).WithFields(logTag).Errorf("Unable to create subscription '%s'", subscription)
+			log.
+				WithError(err).
+				WithFields(logTag).
+				Errorf("Unable to create subscription '%s'", subscription)
 			return NewPubSubError(
 				"CreateSubscription",
 				fmt.Sprintf("unable to create subscription '%s'", subscription),
 				err,
-				false,
+				true,
 			)
 		}
 		log.WithFields(logTag).Infof("Created subscription '%s'", subscription)
@@ -506,7 +509,7 @@ func (p *pubsubClientImpl) DeleteSubscription(ctxt context.Context, subscription
 	subHandle, ok := p.subscriptions[subscription]
 	if !ok {
 		err := NewNotFoundError(
-			fmt.Sprintf("this instance does not know of subscription '%s'", subscription), nil, false,
+			fmt.Sprintf("this instance does not know of subscription '%s'", subscription), nil, true,
 		)
 		log.WithError(err).WithFields(logTag).Errorf("Unable to delete subscription '%s'", subscription)
 		return err
@@ -519,7 +522,7 @@ func (p *pubsubClientImpl) DeleteSubscription(ctxt context.Context, subscription
 			"DeleteSubscription",
 			fmt.Sprintf("unable to delete subscription '%s'", subscription),
 			err,
-			false,
+			true,
 		)
 	}
 	log.WithFields(logTag).Infof("Deleted subscription '%s'", subscription)
@@ -548,7 +551,7 @@ func (p *pubsubClientImpl) GetSubscription(
 	subHandle, ok := p.subscriptions[subscription]
 	if !ok {
 		err := NewNotFoundError(
-			fmt.Sprintf("this instance does not know of subscription '%s'", subscription), nil, false,
+			fmt.Sprintf("this instance does not know of subscription '%s'", subscription), nil, true,
 		)
 		log.WithError(err).WithFields(logTag).Errorf("Unable to find subscription '%s'", subscription)
 		return pubsub.SubscriptionConfig{}, err
@@ -565,7 +568,7 @@ func (p *pubsubClientImpl) GetSubscription(
 			"GetSubscriptionConfig",
 			fmt.Sprintf("unable to read subscription '%s' config", subscription),
 			err,
-			false,
+			true,
 		)
 	}
 	log.WithFields(logTag).Infof("Read subscription '%s' config", subscription)
@@ -591,7 +594,7 @@ func (p *pubsubClientImpl) UpdateSubscription(
 	subHandle, ok := p.subscriptions[subscription]
 	if !ok {
 		err := NewNotFoundError(
-			fmt.Sprintf("this instance does not know of subscription '%s'", subscription), nil, false,
+			fmt.Sprintf("this instance does not know of subscription '%s'", subscription), nil, true,
 		)
 		log.WithError(err).WithFields(logTag).Errorf("Unable to find subscription '%s'", subscription)
 		return err
@@ -604,7 +607,7 @@ func (p *pubsubClientImpl) UpdateSubscription(
 			"UpdateSubscription",
 			fmt.Sprintf("unable to update subscription '%s'", subscription),
 			err,
-			false,
+			true,
 		)
 	}
 	log.WithFields(logTag).Infof("Updated subscription '%s' config", subscription)
@@ -652,7 +655,7 @@ func (p *pubsubClientImpl) Publish(
 				p.metricsHelper.RecordPublish(topic, false, int64(len(message)))
 			}
 			return nil, NewPubSubError(
-				"Publish", fmt.Sprintf("publish on topic '%s' failed", topic), err, false,
+				"Publish", fmt.Sprintf("publish on topic '%s' failed", topic), err, true,
 			)
 		}
 		log.WithFields(logTag).Debugf("Published message [%s] on topic '%s'", txID, topic)
@@ -667,13 +670,15 @@ func (p *pubsubClientImpl) Publish(
 }
 
 // getSubscriptionHandle get subscription handle
-func (p *pubsubClientImpl) getSubscriptionHandle(_ context.Context, subscription string) (*pubsub.Subscription, error) {
+func (p *pubsubClientImpl) getSubscriptionHandle(
+	_ context.Context, subscription string,
+) (*pubsub.Subscription, error) {
 	p.subLock.RLock()
 	defer p.subLock.RUnlock()
 
 	s, ok := p.subscriptions[subscription]
 	if !ok {
-		err := NewNotFoundError(fmt.Sprintf("subscription '%s' is unknown", subscription), nil, false)
+		err := NewNotFoundError(fmt.Sprintf("subscription '%s' is unknown", subscription), nil, true)
 		return nil, err
 	}
 
@@ -709,7 +714,7 @@ func (p *pubsubClientImpl) Subscribe(
 			"GetSubscriptionConfig",
 			fmt.Sprintf("unable to read subscription '%s' config", subscription),
 			err,
-			false,
+			true,
 		)
 	}
 
@@ -743,7 +748,7 @@ func (p *pubsubClientImpl) Subscribe(
 	}); err != nil {
 		log.WithError(err).WithFields(logTag).Errorf("Listen on subscription '%s' failed", subscription)
 		return NewPubSubError(
-			"Receive", fmt.Sprintf("listen on subscription '%s' failed", subscription), err, false,
+			"Receive", fmt.Sprintf("listen on subscription '%s' failed", subscription), err, true,
 		)
 	}
 

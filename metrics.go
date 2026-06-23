@@ -363,7 +363,7 @@ func (c *metricsCollectorImpl) InstallCustomCounterVecMetrics(
 	)
 	if err := c.prometheus.Register(newMetricsTracker); err != nil {
 		exitErr := NewRuntimeError(
-			fmt.Sprintf("Failed to register new metrics '%s'", metricsName), err, false,
+			fmt.Sprintf("Failed to register new metrics '%s'", metricsName), err, true,
 		)
 		log.
 			WithError(err).
@@ -383,7 +383,7 @@ func (c *metricsCollectorImpl) InstallCustomGaugeVecMetrics(
 	)
 	if err := c.prometheus.Register(newMetricsTracker); err != nil {
 		exitErr := NewRuntimeError(
-			fmt.Sprintf("Failed to register new metrics '%s'", metricsName), err, false,
+			fmt.Sprintf("Failed to register new metrics '%s'", metricsName), err, true,
 		)
 		log.
 			WithError(err).

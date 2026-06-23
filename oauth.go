@@ -107,7 +107,7 @@ func GetNewClientCredOAuthTokenManager(
 ) (OAuthTokenManager, error) {
 	validate := validator.New()
 	if err := validate.Struct(&params); err != nil {
-		return nil, NewBadInputError("invalid token manager configuration", err, false)
+		return nil, NewBadInputError("invalid token manager configuration", err, true)
 	}
 
 	params.LogTags["idp-issuer"] = params.IDPIssuerURL
@@ -122,7 +122,7 @@ func GetNewClientCredOAuthTokenManager(
 	log.WithFields(params.LogTags).Infof("Fetching IDP config at %s", idpCfgEP)
 	resp, err := httpClient.R().SetResult(&idpConfig).Get(idpCfgEP)
 	if err != nil {
-		exitErr := NewRuntimeError("failed to call IDP for config", err, false)
+		exitErr := NewRuntimeError("failed to call IDP for config", err, true)
 		log.WithError(err).WithFields(params.LogTags).Error("Failed to read IDP config")
 		workerCtxtCancel()
 		return nil, exitErr
@@ -132,7 +132,7 @@ func GetNewClientCredOAuthTokenManager(
 			resp.StatusCode(),
 			fmt.Sprintf("got status code %d when reading IDP config", resp.StatusCode()),
 			nil,
-			false,
+			true,
 		)
 		log.WithError(err).WithFields(params.LogTags).Error("Failed to read IDP config")
 		workerCtxtCancel()
@@ -245,7 +245,7 @@ func (c *clientCredOAuthTokenManager) GetToken(
 
 	select {
 	case <-ctxt.Done():
-		err := NewTimeoutError("request timed out waiting for response", ctxt.Err(), false)
+		err := NewTimeoutError("request timed out waiting for response", ctxt.Err(), true)
 		log.WithError(err).WithFields(logTags).Error("Unable to get current active token")
 		return "", err
 	case err, ok := <-errorChan:
@@ -309,7 +309,7 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 			SetResult(&newToken).
 			Post(c.idpConfig.TokenEP)
 		if err != nil {
-			exitErr := NewRuntimeError("token endpoint call failed", err, false)
+			exitErr := NewRuntimeError("token endpoint call failed", err, true)
 			log.WithError(err).WithFields(logTags).Error("Token fetch failure")
 			params.errorCB(exitErr)
 			return exitErr
@@ -322,7 +322,7 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 					resp.StatusCode(), string(resp.Body()),
 				),
 				nil,
-				false,
+				true,
 			)
 			log.WithError(err).WithFields(logTags).Error("Token fetch failure")
 			params.errorCB(err)
@@ -332,7 +332,7 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 		log.WithFields(logTags).Debugf("Token response is %s", resp.Body())
 
 		if err := c.validate.Struct(&newToken); err != nil {
-			err := NewValidationError("invalid token response", err, false)
+			err := NewValidationError("invalid token response", err, true)
 			log.WithError(err).WithFields(logTags).Error("Invalid token response")
 			params.errorCB(err)
 			return err

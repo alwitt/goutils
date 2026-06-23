@@ -531,11 +531,11 @@ func (c *pubsubReqRespClient) Request(
 	// Sanity check the request parameters
 	if callParam.ExpectedResponsesCount < 1 {
 		return "", NewBadInputError(
-			"request which require no response does not fit supported usage", nil, false,
+			"request which require no response does not fit supported usage", nil, true,
 		)
 	}
 	if callParam.RespHandler == nil || callParam.TimeoutHandler == nil {
-		return "", NewBadInputError("request must define all handler callbacks", nil, false)
+		return "", NewBadInputError("request must define all handler callbacks", nil, true)
 	}
 
 	// Define new outbound request
@@ -593,7 +593,7 @@ func (c *pubsubReqRespClient) Request(
 
 		select {
 		case <-ctxt.Done():
-			err := NewTimeoutError("request timed out waiting for all responses", ctxt.Err(), false)
+			err := NewTimeoutError("request timed out waiting for all responses", ctxt.Err(), true)
 			log.
 				WithError(err).
 				WithFields(logTags).
@@ -743,7 +743,7 @@ func (c *pubsubReqRespClient) Respond(
 
 		select {
 		case <-ctxt.Done():
-			err := NewTimeoutError("request timed out waiting response transmit", ctxt.Err(), false)
+			err := NewTimeoutError("request timed out waiting response transmit", ctxt.Err(), true)
 			log.
 				WithError(err).
 				WithFields(logTags).
@@ -849,27 +849,27 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 
 	requestID, ok := metadata[rrMsgAttributeNameRequestID]
 	if !ok {
-		err := NewValidationError("message did not come with request ID", nil, false)
+		err := NewValidationError("message did not come with request ID", nil, true)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
 		return err
 	}
 
 	senderID, ok := metadata[rrMsgAttributeNameSenderID]
 	if !ok {
-		err := NewValidationError("message did not come with sender ID", nil, false)
+		err := NewValidationError("message did not come with sender ID", nil, true)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
 		return err
 	}
 
 	if msgTargetID, ok := metadata[rrMsgAttributeNameTargetID]; !ok {
-		err := NewValidationError("message did not come with target ID", nil, false)
+		err := NewValidationError("message did not come with target ID", nil, true)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
 		return err
 	} else if msgTargetID != c.targetID {
 		err := NewValidationError(
 			fmt.Sprintf("message target ID does not match client: %s =/= %s", msgTargetID, c.targetID),
 			nil,
-			false,
+			true,
 		)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
 		return err
@@ -975,7 +975,7 @@ func (c *pubsubReqRespClient) handleInboundRequest(params rrInboundRequestPayloa
 	logTags := c.GetLogTagsForContext(lclCtxt)
 
 	if c.inboundRequestHandler == nil {
-		err := NewRuntimeError("no handler installed for inbound requests", nil, false)
+		err := NewRuntimeError("no handler installed for inbound requests", nil, true)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound request")
 		return err
 	}
@@ -1031,7 +1031,7 @@ func (c *pubsubReqRespClient) handleInboundResponse(params rrInboundResponsePayl
 		err := NewNotFoundError(
 			fmt.Sprintf("request ID '%s' did not originate from this client", params.requestID),
 			nil,
-			false,
+			true,
 		)
 		log.WithError(err).WithFields(logTags).Error("Unable to process inbound response")
 		return err

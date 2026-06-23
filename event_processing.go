@@ -122,12 +122,12 @@ func (p *taskProcessorImpl) Submit(ctx context.Context, newTaskParam interface{}
 		if p.metrics != nil {
 			p.metrics.RecordSubmit(p.name, false)
 		}
-		return NewTimeoutError("calling context expired", ctx.Err(), false)
+		return NewTimeoutError("calling context expired", ctx.Err(), true)
 	case <-p.operationContext.Done():
 		return NewShutdownError(
 			fmt.Sprintf("[TP %s] task processor has stopped", p.name),
 			p.operationContext.Err(),
-			false,
+			true,
 		)
 	}
 }
@@ -201,7 +201,7 @@ func (p *taskProcessorImpl) processNewTaskParam(newTaskParam interface{}) error 
 			"[TP %s] no handler registered for type '%s'", p.name, reflect.TypeOf(newTaskParam),
 		),
 		nil,
-		false,
+		true,
 	)
 }
 
@@ -230,7 +230,16 @@ func (p *taskProcessorImpl) StartEventLoop(wg *sync.WaitGroup) error {
 					return
 				}
 				if err := p.processNewTaskParam(newTaskParam); err != nil {
-					log.WithError(err).WithFields(p.LogTags).Error("Failed to process new task param")
+					deepestErrWithStack := DeepestErrorWithTrace(err)
+					logEntry := log.
+						WithError(err).
+						WithFields(p.LogTags).
+						WithField("param", reflect.TypeOf(newTaskParam).String())
+					if deepestErrWithStack != nil {
+						logEntry.Errorf("Failed to process new task param:\n%+v", deepestErrWithStack)
+					} else {
+						logEntry.Error("Failed to process new task param")
+					}
 				}
 			}
 		}

@@ -1,6 +1,7 @@
 package goutils
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -67,6 +68,33 @@ func (e BaseError) Format(s fmt.State, verb rune) {
 	case 'q':
 		_, _ = fmt.Fprintf(s, "%q", e.Error())
 	}
+}
+
+// stackCarrier is implemented by errors that captured a call stack at construction.
+// Because callStack is unexported, only types declared in this package (BaseError and
+// the concrete types embedding it) can satisfy it — foreign errors in a chain are
+// ignored even if they expose a stack under some other method name.
+type stackCarrier interface {
+	callStack() []uintptr
+}
+
+// callStack exposes the captured program counters to in-package chain walkers.
+func (e BaseError) callStack() []uintptr {
+	return e.stack
+}
+
+// DeepestErrorWithTrace walks err's Unwrap chain and returns the deepest error (nearest
+// the root cause) that captured a call stack. It returns nil if no error in the chain
+// carried one. The returned error is the original chain link, so callers may inspect
+// its type, message, or render its trace via StackTrace / "%+v".
+func DeepestErrorWithTrace(err error) error {
+	var deepest error
+	for ; err != nil; err = errors.Unwrap(err) {
+		if c, ok := err.(stackCarrier); ok && len(c.callStack()) > 0 {
+			deepest = err
+		}
+	}
+	return deepest
 }
 
 // ======================================================================================

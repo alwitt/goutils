@@ -125,7 +125,7 @@ func (b *messageBusImpl) GetTopic(_ context.Context, topicName string) (MessageT
 		return existing, nil
 	}
 
-	return nil, NewNotFoundError(fmt.Sprintf("unknown topic '%s'", topicName), nil, false)
+	return nil, NewNotFoundError(fmt.Sprintf("unknown topic '%s'", topicName), nil, true)
 }
 
 /*
@@ -141,7 +141,7 @@ func (b *messageBusImpl) DeleteTopic(ctxt context.Context, topicName string) err
 	defer b.lock.RUnlock()
 
 	if _, ok := b.topics[topicName]; !ok {
-		return NewNotFoundError(fmt.Sprintf("unknown topic '%s'", topicName), nil, false)
+		return NewNotFoundError(fmt.Sprintf("unknown topic '%s'", topicName), nil, true)
 	}
 
 	delete(b.topics, topicName)
@@ -309,7 +309,7 @@ func (t *messageTopicImpl) CreateSubscription(
 
 	if _, ok := t.subscriptions[subscriber]; ok {
 		return nil, NewAlreadyExistsError(
-			fmt.Sprintf("subscription '%s' already exists", subscriber), nil, false,
+			fmt.Sprintf("subscription '%s' already exists", subscriber), nil, true,
 		)
 	}
 
@@ -339,7 +339,7 @@ func (t *messageTopicImpl) DeleteSubscription(ctxt context.Context, subscriber s
 
 	existing, ok := t.subscriptions[subscriber]
 	if !ok {
-		return NewNotFoundError(fmt.Sprintf("unknown subscription '%s'", subscriber), nil, false)
+		return NewNotFoundError(fmt.Sprintf("unknown subscription '%s'", subscriber), nil, true)
 	}
 	log.
 		WithFields(logTags).

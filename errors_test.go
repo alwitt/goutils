@@ -100,3 +100,56 @@ func TestErrorConstruction(t *testing.T) {
 		}))
 	}
 }
+
+// genValidationError is the innermost generator: it produces the root-cause
+// ValidationError, capturing its own call stack.
+func genValidationError() error {
+	return NewValidationError("data failed validation", fmt.Errorf("dummy error 3"), true)
+}
+
+// genBadInputError wraps the ValidationError from GenValidationError, capturing its
+// own call stack on the way out.
+func genBadInputError() error {
+	return NewBadInputError(
+		"input was rejected", fmt.Errorf("dummy wrap 2 [%w]", genValidationError()), true,
+	)
+}
+
+// genRuntimeError wraps the BadInputError from GenBadInputError, capturing its own
+// call stack on the way out.
+func genRuntimeError() error {
+	return NewRuntimeError(
+		"operation failed", fmt.Errorf("dummy wrap 1 [%w]", genBadInputError()), true,
+	)
+}
+
+func TestFindDeepestErrorStackTrace(t *testing.T) {
+
+	log.SetLevel(log.DebugLevel)
+	assert := assert.New(t)
+
+	// Build a chain RuntimeError -> BadInputError -> ValidationError where every
+	// link captured its own stack. The walker must return the deepest one.
+	err := genRuntimeError()
+
+	deepest := DeepestErrorWithTrace(err)
+	assert.NotNil(deepest)
+
+	// The deepest stack-carrying error is the root-cause ValidationError, and not
+	// either of the outer wrappers.
+	var validationErr ValidationError
+	assert.True(errors.As(deepest, &validationErr))
+	var badInputErr BadInputError
+	assert.False(errors.As(deepest, &badInputErr))
+	var runtimeErr RuntimeError
+	assert.False(errors.As(deepest, &runtimeErr))
+
+	// Its captured stack must originate in GenValidationError.
+	st, ok := deepest.(interface{ StackTrace() string })
+	assert.True(ok)
+	rendered := st.StackTrace()
+	assert.NotEmpty(rendered)
+	assert.Contains(rendered, "genValidationError")
+	log.Debugf("deepest stack:\n%s", rendered)
+	log.Debugf("full error chain: %v", err)
+}

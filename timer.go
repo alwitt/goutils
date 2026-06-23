@@ -76,7 +76,7 @@ func (t *intervalTimerImpl) Start(
 	interval time.Duration, handler TimeoutHandler, oneShot bool,
 ) error {
 	if t.running {
-		return NewConsistencyError("already running", nil, false)
+		return NewConsistencyError("already running", nil, true)
 	}
 	log.WithFields(t.LogTags).Infof("Starting with int %s", interval)
 	t.wg.Add(1)
@@ -98,7 +98,13 @@ func (t *intervalTimerImpl) Start(
 			case <-time.After(interval):
 				log.WithFields(t.LogTags).Debug("Calling handler")
 				if err := handler(); err != nil {
-					log.WithError(err).WithFields(t.LogTags).Error("Handler failed")
+					deepestErrWithStack := DeepestErrorWithTrace(err)
+					logEntry := log.WithError(err).WithFields(t.LogTags)
+					if deepestErrWithStack != nil {
+						logEntry.Errorf("Timer handler failed:\n%+v", deepestErrWithStack)
+					} else {
+						logEntry.Error("Timer handler failed")
+					}
 				}
 				if oneShot {
 					return

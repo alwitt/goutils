@@ -150,9 +150,9 @@ func TimeBoundedWaitGroupWait(
 	case <-c:
 		return nil
 	case <-wgCtxt.Done():
-		return NewTimeoutError("associated context expired", wgCtxt.Err(), false)
+		return NewTimeoutError("associated context expired", wgCtxt.Err(), true)
 	case <-time.After(timeout):
-		return NewTimeoutError("wait-group wait timed out", nil, false)
+		return NewTimeoutError("wait-group wait timed out", nil, true)
 	}
 }
 

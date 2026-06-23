@@ -110,7 +110,7 @@ func DefineOpenIDProviderClient(
 	resp, err := httpClient.R().SetResult(&cfg).Get(cfgEP)
 	if err != nil {
 		exitErr := NewRuntimeError(
-			fmt.Sprintf("failed to call IDP for OpenID config at %s", cfgEP), err, false,
+			fmt.Sprintf("failed to call IDP for OpenID config at %s", cfgEP), err, true,
 		)
 		log.WithError(err).WithFields(params.LogTags).Errorf("GET %s call failure", cfgEP)
 		return nil, exitErr
@@ -125,7 +125,7 @@ func DefineOpenIDProviderClient(
 				string(resp.Body()),
 			),
 			nil,
-			false,
+			true,
 		)
 		log.WithError(err).WithFields(params.LogTags).Errorf("GET %s unsuccessful", cfgEP)
 		return nil, err
@@ -139,7 +139,7 @@ func DefineOpenIDProviderClient(
 	resp, err = httpClient.R().SetResult(&signingKeys).Get(cfg.JwksURI)
 	if err != nil {
 		exitErr := NewRuntimeError(
-			fmt.Sprintf("failed to call IDP for JWKS at %s", cfg.JwksURI), err, false,
+			fmt.Sprintf("failed to call IDP for JWKS at %s", cfg.JwksURI), err, true,
 		)
 		log.WithError(err).WithFields(params.LogTags).Errorf("GET %s unsuccessful", cfg.JwksURI)
 		return nil, exitErr
@@ -152,7 +152,7 @@ func DefineOpenIDProviderClient(
 				cfg.JwksURI, resp.StatusCode(), string(resp.Body()),
 			),
 			nil,
-			false,
+			true,
 		)
 		log.WithError(err).WithFields(params.LogTags).Errorf("GET %s unsuccessful", cfg.JwksURI)
 		return nil, err
@@ -217,17 +217,17 @@ AssociatedPublicKey fetches the associated public based on "kid" value of a JWT 
 func (c *oidpClientImpl) AssociatedPublicKey(token *jwt.Token) (interface{}, error) {
 	kidRaw, ok := token.Header["kid"]
 	if !ok {
-		return nil, NewBadInputError("jwt missing 'kid' field", nil, false)
+		return nil, NewBadInputError("jwt missing 'kid' field", nil, true)
 	}
 	kid, ok := kidRaw.(string)
 	if !ok {
-		return nil, NewBadInputError("jwt 'kid' field does not contain a string", nil, false)
+		return nil, NewBadInputError("jwt 'kid' field does not contain a string", nil, true)
 	}
 	if pubKey, ok := c.publicKey[kid]; ok {
 		return pubKey, nil
 	}
 	err := NewNotFoundError(
-		fmt.Sprintf("jwt refers to unknown public key '%s'", kid), nil, false,
+		fmt.Sprintf("jwt refers to unknown public key '%s'", kid), nil, true,
 	)
 	log.WithError(err).WithFields(c.LogTags).Error("Unable to resolve JWT signing key")
 	return nil, err
@@ -315,7 +315,7 @@ func (c *oidpClientImpl) IntrospectToken(ctxt context.Context, token string) (bo
 		// * Client secret
 		log.WithFields(logtags).Error("Missing required settings to perform introspection")
 		return false, NewBadInputError(
-			"missing required settings to perform introspection", nil, false,
+			"missing required settings to perform introspection", nil, true,
 		)
 	}
 
@@ -340,7 +340,7 @@ func (c *oidpClientImpl) IntrospectToken(ctxt context.Context, token string) (bo
 	resp, err := request.Post(introspectURL)
 	if err != nil {
 		exitErr := NewRuntimeError(
-			fmt.Sprintf("failed to call IDP for introspection at %s", introspectURL), err, false,
+			fmt.Sprintf("failed to call IDP for introspection at %s", introspectURL), err, true,
 		)
 		log.WithError(err).WithFields(logtags).Errorf("Introspect against %s failed", introspectURL)
 		return false, exitErr
@@ -353,7 +353,7 @@ func (c *oidpClientImpl) IntrospectToken(ctxt context.Context, token string) (bo
 				resp.StatusCode(), string(resp.Body()),
 			),
 			nil,
-			false,
+			true,
 		)
 		log.WithError(err).WithFields(logtags).Errorf("Introspect against %s failed", introspectURL)
 		return false, err
@@ -369,7 +369,7 @@ func (c *oidpClientImpl) IntrospectToken(ctxt context.Context, token string) (bo
 func bearerTokenExtractor(header string) (string, error) {
 	// Check if header is too short
 	if len(header) < 6 {
-		return "", NewBadInputError("header must be at least 6 characters long", nil, false)
+		return "", NewBadInputError("header must be at least 6 characters long", nil, true)
 	}
 
 	// Convert to lowercase for case-insensitive match
@@ -378,13 +378,13 @@ func bearerTokenExtractor(header string) (string, error) {
 	// Find "bearer" substring
 	pos := strings.Index(s, "bearer")
 	if pos == -1 {
-		return "", NewBadInputError("header does not contain 'bearer'", nil, false)
+		return "", NewBadInputError("header does not contain 'bearer'", nil, true)
 	}
 
 	// Calculate token start index (after "bearer")
 	tokenStart := pos + 6
 	if tokenStart >= len(header) {
-		return "", NewBadInputError("no token found after 'bearer'", nil, false)
+		return "", NewBadInputError("no token found after 'bearer'", nil, true)
 	}
 
 	// Extract token and remove leading whitespace
@@ -393,7 +393,7 @@ func bearerTokenExtractor(header string) (string, error) {
 
 	// Validate token
 	if token == "" {
-		return "", NewBadInputError("token is empty after removing leading whitespace", nil, false)
+		return "", NewBadInputError("token is empty after removing leading whitespace", nil, true)
 	}
 
 	return token, nil
