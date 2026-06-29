@@ -811,3 +811,222 @@ func TestRedisRingBufferNegativeOffsetRead(t *testing.T) {
 		lclCtxCancel()
 	}
 }
+
+func TestRedisRingBufferReadNewest(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	redisConnect := getRedisConnectParamForTest(assert)
+	client, err := redis.NewClient(utCtx, redisConnect)
+	assert.Nil(err)
+
+	// makeSeq builds a byte slice of length n where each byte is its index, so the read
+	// back data can be matched against an exact position in the written stream.
+	makeSeq := func(n int) []byte {
+		out := make([]byte, n)
+		for i := range out {
+			out[i] = byte(i)
+		}
+		return out
+	}
+
+	const C = 50 // buffer capacity used across every sub-case
+
+	// The newest-read window is `start = max(oldest, total - maxlen)`, returning `total - start`
+	// bytes, where `oldest = max(0, total - C)`. Each fill state below is read three ways: with a
+	// target length below capacity (20), equal to capacity (50), and exceeding capacity (80).
+
+	// Empty buffer: nothing has been written, so every read returns no data regardless of the
+	// requested length.
+	{
+		testBuffer := uuid.NewString()
+
+		uut, err := client.GetRingBuffer(utCtx, testBuffer, C)
+		assert.Nil(err)
+		defer func() {
+			assert.Nil(client.DeleteRingBuffer(utCtx, testBuffer))
+		}()
+
+		for _, readLen := range []int{20, 50, 80} {
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			recvBuf := make([]byte, readLen)
+			actualOffset, read, total, err := uut.ReadNewest(lclCtx, recvBuf)
+			assert.Nil(err)
+
+			assert.Equal(0, int(actualOffset))
+			assert.Equal(0, read)
+			assert.Equal(0, int(total))
+
+			lclCtxCancel()
+		}
+	}
+
+	// Partially full buffer: 30 of 50 bytes written, so the whole stream is live (oldest = 0).
+	{
+		testBuffer := uuid.NewString()
+
+		uut, err := client.GetRingBuffer(utCtx, testBuffer, C)
+		assert.Nil(err)
+		defer func() {
+			assert.Nil(client.DeleteRingBuffer(utCtx, testBuffer))
+		}()
+
+		testData := makeSeq(30)
+		{
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			written, err := uut.Write(lclCtx, testData)
+			assert.Nil(err)
+			assert.Equal(len(testData), int(written))
+
+			lclCtxCancel()
+		}
+
+		// Below capacity: the newest 20 of the 30 written bytes start at offset 10.
+		{
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			recvBuf := make([]byte, 20)
+			actualOffset, read, total, err := uut.ReadNewest(lclCtx, recvBuf)
+			assert.Nil(err)
+
+			assert.Equal(10, int(actualOffset))
+			assert.Equal(20, read)
+			assert.Equal(30, int(total))
+			assert.Equal(testData[10:], recvBuf[:read])
+
+			lclCtxCancel()
+		}
+
+		// Equal to and exceeding capacity: both ask for at least everything written, so the
+		// full 30 bytes come back from offset 0.
+		for _, readLen := range []int{50, 80} {
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			recvBuf := make([]byte, readLen)
+			actualOffset, read, total, err := uut.ReadNewest(lclCtx, recvBuf)
+			assert.Nil(err)
+
+			assert.Equal(0, int(actualOffset))
+			assert.Equal(30, read)
+			assert.Equal(30, int(total))
+			assert.Equal(testData, recvBuf[:read])
+
+			lclCtxCancel()
+		}
+	}
+
+	// Buffer filled exactly to capacity: 50 of 50 bytes written, still no wrap (oldest = 0).
+	{
+		testBuffer := uuid.NewString()
+
+		uut, err := client.GetRingBuffer(utCtx, testBuffer, C)
+		assert.Nil(err)
+		defer func() {
+			assert.Nil(client.DeleteRingBuffer(utCtx, testBuffer))
+		}()
+
+		testData := makeSeq(50)
+		{
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			written, err := uut.Write(lclCtx, testData)
+			assert.Nil(err)
+			assert.Equal(len(testData), int(written))
+
+			lclCtxCancel()
+		}
+
+		// Below capacity: the newest 20 bytes start at offset 30.
+		{
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			recvBuf := make([]byte, 20)
+			actualOffset, read, total, err := uut.ReadNewest(lclCtx, recvBuf)
+			assert.Nil(err)
+
+			assert.Equal(30, int(actualOffset))
+			assert.Equal(20, read)
+			assert.Equal(50, int(total))
+			assert.Equal(testData[30:], recvBuf[:read])
+
+			lclCtxCancel()
+		}
+
+		// Equal to and exceeding capacity: both return the full 50 bytes from offset 0.
+		for _, readLen := range []int{50, 80} {
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			recvBuf := make([]byte, readLen)
+			actualOffset, read, total, err := uut.ReadNewest(lclCtx, recvBuf)
+			assert.Nil(err)
+
+			assert.Equal(0, int(actualOffset))
+			assert.Equal(50, read)
+			assert.Equal(50, int(total))
+			assert.Equal(testData, recvBuf[:read])
+
+			lclCtxCancel()
+		}
+	}
+
+	// Buffer filled beyond capacity: 80 bytes written into 50 capacity, so the write pointer has
+	// wrapped and only the newest 50 bytes (absolute offsets 30..79) survive (oldest = 30). The
+	// live window straddles the physical end of the ring, exercising the wrap path in the read.
+	{
+		testBuffer := uuid.NewString()
+
+		uut, err := client.GetRingBuffer(utCtx, testBuffer, C)
+		assert.Nil(err)
+		defer func() {
+			assert.Nil(client.DeleteRingBuffer(utCtx, testBuffer))
+		}()
+
+		testData := makeSeq(80)
+		{
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			written, err := uut.Write(lclCtx, testData)
+			assert.Nil(err)
+			assert.Equal(len(testData), int(written))
+
+			lclCtxCancel()
+		}
+
+		// Below capacity: the newest 20 bytes start at offset 60.
+		{
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			recvBuf := make([]byte, 20)
+			actualOffset, read, total, err := uut.ReadNewest(lclCtx, recvBuf)
+			assert.Nil(err)
+
+			assert.Equal(60, int(actualOffset))
+			assert.Equal(20, read)
+			assert.Equal(80, int(total))
+			assert.Equal(testData[60:], recvBuf[:read])
+
+			lclCtxCancel()
+		}
+
+		// Equal to and exceeding capacity: both clamp to the live window, returning the newest
+		// 50 bytes from offset 30.
+		for _, readLen := range []int{50, 80} {
+			lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
+
+			recvBuf := make([]byte, readLen)
+			actualOffset, read, total, err := uut.ReadNewest(lclCtx, recvBuf)
+			assert.Nil(err)
+
+			assert.Equal(30, int(actualOffset))
+			assert.Equal(50, read)
+			assert.Equal(80, int(total))
+			assert.Equal(testData[30:], recvBuf[:read])
+
+			lclCtxCancel()
+		}
+	}
+}

@@ -11,6 +11,9 @@ require-template-schema-exists: true
 template: testify
 template-schema: '{{.Template}}.schema.json'
 packages:
+  github.com/alwitt/goutils/redis:
+    config:
+      all: true
   github.com/alwitt/goutils:
     config:
       all: true

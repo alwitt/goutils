@@ -49,7 +49,7 @@ return dlen`,
 	// readScript the REDIS script for reading from a ring buffer at an offset
 	readScript = redis.NewScript(
 		`-- KEYS[1]=buf, KEYS[2]=meta ; ARGV[1]=cap, ARGV[2]=offset, ARGV[3]=maxlen
--- Returns: {start, data}
+-- Returns: {start, read count, data}
 local cap    = tonumber(ARGV[1])
 local offset = tonumber(ARGV[2])
 local maxlen = tonumber(ARGV[3])
@@ -60,6 +60,32 @@ local oldest = math.max(0, total - cap)
 local start = math.max(oldest, math.min(offset, total))   -- clamp into the live window
 local n     = math.min(maxlen, total - start)
 if n <= 0 then return {start, total, ''} end              -- caught up / nothing to read
+
+local pos = start % cap                                    -- physical start of the read
+local data
+if pos + n <= cap then
+  data = redis.call('GETRANGE', KEYS[1], pos, pos + n - 1)
+else                                                       -- wraps the physical end
+  local first = cap - pos
+  data = redis.call('GETRANGE', KEYS[1], pos, cap - 1)
+      .. redis.call('GETRANGE', KEYS[1], 0, n - first - 1)
+end
+return {start, total, data}`,
+	)
+
+	// readNewestScript the REDIS script for reading the newest N bytes from a ring buffer
+	readNewestScript = redis.NewScript(
+		`-- KEYS[1]=buf, KEYS[2]=meta ; ARGV[1]=cap, ARGV[2]=maxlen
+-- Returns: {start, read count, data}
+local cap    = tonumber(ARGV[1])
+local maxlen = tonumber(ARGV[2])
+
+local total  = tonumber(redis.call('GET', KEYS[2]) or '0')
+local oldest = math.max(0, total - cap)
+
+local start = math.max(oldest, total - maxlen)            -- newest maxlen bytes, clamped to window
+local n     = total - start
+if n <= 0 then return {start, total, ''} end              -- nothing written yet
 
 local pos = start % cap                                    -- physical start of the read
 local data
@@ -105,9 +131,23 @@ type RingBuffer interface {
 			@returns the total number of bytes written to the buffer
 			@returns `REDISError` in case of failure
 	*/
-	ReadAt(
-		ctx context.Context, buf []byte, offset int64,
-	) (int64, int, int64, error)
+	ReadAt(ctx context.Context, buf []byte, offset int64) (int64, int, int64, error)
+
+	/*
+		ReadNewest read the newest bytes from the buffer, filling at most `len(buf)` bytes.
+
+		If fewer than `len(buf)` bytes have been written, all available bytes are returned. If
+		more than the buffer capacity is requested, only the bytes currently in the buffer are
+		returned.
+
+			@param ctx context.Context - execution context
+			@param buf []byte - the receive buffer
+			@returns the actual offset of the first byte read
+			@returns the number of bytes read
+			@returns the total number of bytes written to the buffer
+			@returns `REDISError` in case of failure
+	*/
+	ReadNewest(ctx context.Context, buf []byte) (int64, int, int64, error)
 
 	/*
 		Total fetch the total bytes written to the buffer
@@ -203,6 +243,37 @@ func (b *ringBuffer) ReadAt(
 	if err != nil {
 		return -1, 0, 0, goutils.NewRedisError(
 			"failed to read from buffer "+b.bufferNameKey, err, true,
+		)
+	}
+
+	actualOffset := resp[0].(int64)
+	total := resp[1].(int64)
+	readCount := copy(buf, []byte(resp[2].(string)))
+
+	return actualOffset, readCount, total, nil
+}
+
+/*
+ReadNewest read the newest bytes from the buffer, filling at most `len(buf)` bytes.
+
+If fewer than `len(buf)` bytes have been written, all available bytes are returned. If
+more than the buffer capacity is requested, only the bytes currently in the buffer are
+returned.
+
+	@param ctx context.Context - execution context
+	@param buf []byte - the receive buffer
+	@returns the actual offset of the first byte read
+	@returns the number of bytes read
+	@returns the total number of bytes written to the buffer
+	@returns `REDISError` in case of failure
+*/
+func (b *ringBuffer) ReadNewest(ctx context.Context, buf []byte) (int64, int, int64, error) {
+	resp, err := readNewestScript.Run(
+		ctx, b.core, []string{b.bufferNameKey, b.bufferWrittenKey}, b.capacity, len(buf),
+	).Slice()
+	if err != nil {
+		return -1, 0, 0, goutils.NewRedisError(
+			"failed to read newest from buffer "+b.bufferNameKey, err, true,
 		)
 	}
 
