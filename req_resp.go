@@ -212,20 +212,24 @@ func GetNewPubSubRequestResponseClientInstance(
 	// Prepare the topic
 	if existingTopic, err := params.PSClient.GetTopic(parentCtxt, params.TargetID); err != nil {
 		// Create new topic
-		log.WithFields(params.LogTags).Warnf("Topic '%s' is not known. Creating...", params.TargetID)
+		log.
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Warnf("Topic '%s' is not known. Creating...", params.TargetID)
 		if err := params.PSClient.CreateTopic(
 			parentCtxt, params.TargetID, &pubsub.TopicConfig{RetentionDuration: params.MsgRetentionTTL},
 		); err != nil {
 			log.
 				WithError(err).
-				WithFields(params.LogTags).
+				WithFields(UpdateCodePositionInTags(params.LogTags)).
 				Errorf("Failed when creating PubSub topic '%s'", params.TargetID)
 			workerCtxtCancel()
 			return nil, err
 		}
 	} else {
 		// Use existing topic
-		log.WithFields(params.LogTags).Infof("Reusing existing topic '%s'", params.TargetID)
+		log.
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Infof("Reusing existing topic '%s'", params.TargetID)
 		updatedTopic := pubsub.TopicConfigToUpdate{
 			Labels:               existingTopic.Labels,
 			MessageStoragePolicy: &existingTopic.MessageStoragePolicy,
@@ -235,7 +239,7 @@ func GetNewPubSubRequestResponseClientInstance(
 		if err := params.PSClient.UpdateTopic(parentCtxt, params.TargetID, updatedTopic); err != nil {
 			log.
 				WithError(err).
-				WithFields(params.LogTags).
+				WithFields(UpdateCodePositionInTags(params.LogTags)).
 				Errorf("Failed when updating PubSub topic '%s'", params.TargetID)
 			workerCtxtCancel()
 			return nil, err
@@ -248,7 +252,9 @@ func GetNewPubSubRequestResponseClientInstance(
 		parentCtxt, receiveSubscription,
 	); err != nil {
 		// Create new subscription
-		log.WithFields(params.LogTags).Warnf("Subscription '%s' is not known. Creating...", receiveSubscription)
+		log.
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Warnf("Subscription '%s' is not known. Creating...", receiveSubscription)
 		if err := params.PSClient.CreateSubscription(
 			parentCtxt,
 			params.TargetID,
@@ -260,14 +266,16 @@ func GetNewPubSubRequestResponseClientInstance(
 		); err != nil {
 			log.
 				WithError(err).
-				WithFields(params.LogTags).
+				WithFields(UpdateCodePositionInTags(params.LogTags)).
 				Errorf("Failed when creating PubSub subscription '%s'", receiveSubscription)
 			workerCtxtCancel()
 			return nil, err
 		}
 	} else {
 		// Use existing subscription
-		log.WithFields(params.LogTags).Infof("Reusing existing subscription '%s'", receiveSubscription)
+		log.
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Infof("Reusing existing subscription '%s'", receiveSubscription)
 		updatedSubscription := pubsub.SubscriptionConfigToUpdate{
 			RetentionDuration: params.MsgRetentionTTL,
 			ExpirationPolicy:  time.Hour * 24,
@@ -277,7 +285,7 @@ func GetNewPubSubRequestResponseClientInstance(
 		); err != nil {
 			log.
 				WithError(err).
-				WithFields(params.LogTags).
+				WithFields(UpdateCodePositionInTags(params.LogTags)).
 				Errorf("Failed when updating PubSub subscription '%s'", receiveSubscription)
 			workerCtxtCancel()
 			return nil, err
@@ -300,7 +308,10 @@ func GetNewPubSubRequestResponseClientInstance(
 		params.SupportTaskMetricsHelper,
 	)
 	if err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to define inbound request processor")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to define inbound request processor")
 		workerCtxtCancel()
 		return nil, err
 	}
@@ -320,7 +331,10 @@ func GetNewPubSubRequestResponseClientInstance(
 		params.SupportTaskMetricsHelper,
 	)
 	if err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to define outbound request processor")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to define outbound request processor")
 		workerCtxtCancel()
 		return nil, err
 	}
@@ -350,7 +364,10 @@ func GetNewPubSubRequestResponseClientInstance(
 	timerLogTags["sub-module"] = "timeout-enforce-timer"
 	instance.checkTimer, err = GetIntervalTimerInstance(workerContext, &instance.wg, timerLogTags)
 	if err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to define request timeout check timer")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to define request timeout check timer")
 		workerCtxtCancel()
 		return nil, err
 	}
@@ -364,7 +381,10 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := outboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrRequestPayload{}), instance.request,
 	); err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -372,7 +392,10 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := outboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrInboundResponsePayload{}), instance.receiveInboundResponseMsg,
 	); err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -380,7 +403,10 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := outboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrRequestTimeoutCheckPayload{}), instance.requestTimeoutCheck,
 	); err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -390,7 +416,10 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := inboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrInboundRequestPayload{}), instance.receiveInboundRequestMsg,
 	); err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -398,7 +427,10 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := inboundProcessor.AddToTaskExecutionMap(
 		reflect.TypeOf(rrResponsePayload{}), instance.respond,
 	); err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to install task definition")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to install task definition")
 		return nil, err
 	}
 
@@ -413,7 +445,7 @@ func GetNewPubSubRequestResponseClientInstance(
 		if err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				Errorf("Receive failure on subscription '%s'", receiveSubscription)
 		}
 	}()
@@ -425,14 +457,14 @@ func GetNewPubSubRequestResponseClientInstance(
 		if err := outboundProcessor.StartEventLoop(&instance.wg); err != nil {
 			log.
 				WithError(err).
-				WithFields(params.LogTags).
+				WithFields(UpdateCodePositionInTags(params.LogTags)).
 				Error("Unable to start outbound processing task pool")
 			return nil, err
 		}
 		if err := inboundProcessor.StartEventLoop(&instance.wg); err != nil {
 			log.
 				WithError(err).
-				WithFields(params.LogTags).
+				WithFields(UpdateCodePositionInTags(params.LogTags)).
 				Error("Unable to start inbound processing task pool")
 			return nil, err
 		}
@@ -444,7 +476,10 @@ func GetNewPubSubRequestResponseClientInstance(
 	if err := instance.checkTimer.Start(params.TimeoutEnforceInt, func() error {
 		return instance.RequestTimeoutCheck(workerContext)
 	}, false); err != nil {
-		log.WithError(err).WithFields(params.LogTags).Error("Unable to start request timeout check timer")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(params.LogTags)).
+			Error("Unable to start request timeout check timer")
 		return nil, err
 	}
 
@@ -462,7 +497,7 @@ func (c *pubsubReqRespClient) SetInboundRequestHandler(
 ) error {
 	logTags := c.GetLogTagsForContext(ctxt)
 	c.inboundRequestHandler = handler
-	log.WithFields(logTags).Info("Changed inbound request handler")
+	log.WithFields(UpdateCodePositionInTags(logTags)).Info("Changed inbound request handler")
 	return nil
 }
 
@@ -560,7 +595,7 @@ func (c *pubsubReqRespClient) Request(
 	}
 
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		WithField("target-id", targetID).
 		WithField("request-id", requestID).
 		Info("Submitting new outbound REQUEST")
@@ -576,7 +611,7 @@ func (c *pubsubReqRespClient) Request(
 		exitErr := NewRuntimeError("Failed to submit 'Request' job", err, false)
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("target-id", targetID).
 			WithField("request-id", requestID).
 			Error("Failed to submit 'Request' job")
@@ -586,7 +621,7 @@ func (c *pubsubReqRespClient) Request(
 	// Wait for all responses to be processed, if blocking
 	if callParam.Blocking {
 		log.
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("target-id", targetID).
 			WithField("request-id", requestID).
 			Info("Awaiting all responses")
@@ -596,14 +631,14 @@ func (c *pubsubReqRespClient) Request(
 			err := NewTimeoutError("request timed out waiting for all responses", ctxt.Err(), true)
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("target-id", targetID).
 				WithField("request-id", requestID).
 				Error("Outbound request failed")
 			return requestID, err
 		case <-finishSignal:
 			log.
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("target-id", targetID).
 				WithField("request-id", requestID).
 				Info("Received all responses")
@@ -621,7 +656,10 @@ func (c *pubsubReqRespClient) request(params interface{}) error {
 		Expected: reflect.TypeOf(rrRequestPayload{}), Gotten: reflect.TypeOf(params),
 	}
 	logTags := c.GetLogTagsForContext(c.processorContext)
-	log.WithError(err).WithFields(logTags).Error("'Request' processing failure")
+	log.
+		WithError(err).
+		WithFields(UpdateCodePositionInTags(logTags)).
+		Error("'Request' processing failure")
 	return err
 }
 
@@ -642,14 +680,14 @@ func (c *pubsubReqRespClient) handleRequest(params rrRequestPayload) error {
 
 	// Publish the message
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Debug("Publishing new request")
 	if _, err := c.psClient.Publish(
 		c.processorContext, params.request.targetID, params.message, params.metadata, true,
 	); err != nil {
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			Error("PubSub publish failed")
 		return err
 	}
@@ -658,7 +696,7 @@ func (c *pubsubReqRespClient) handleRequest(params rrRequestPayload) error {
 	c.outboundRequests[params.requestID] = &params.request
 
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Debug("Published new request")
 
 	return nil
@@ -711,7 +749,7 @@ func (c *pubsubReqRespClient) Respond(
 	}
 
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		WithField("orig-target-id", originalReq.TargetID).
 		WithField("orig-request-id", originalReq.RequestID).
 		Info("Submitting new outbound RESPONSE")
@@ -726,7 +764,7 @@ func (c *pubsubReqRespClient) Respond(
 		exitErr := NewRuntimeError("Failed to submit 'Respond' job", err, false)
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("orig-target-id", originalReq.TargetID).
 			WithField("orig-request-id", originalReq.RequestID).
 			Error("Failed to submit 'Respond' job")
@@ -736,7 +774,7 @@ func (c *pubsubReqRespClient) Respond(
 	// Wait for response to be sent
 	if blocking {
 		log.
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("orig-target-id", originalReq.TargetID).
 			WithField("orig-request-id", originalReq.RequestID).
 			Info("Wait until response sent")
@@ -746,14 +784,14 @@ func (c *pubsubReqRespClient) Respond(
 			err := NewTimeoutError("request timed out waiting response transmit", ctxt.Err(), true)
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("orig-target-id", originalReq.TargetID).
 				WithField("orig-request-id", originalReq.RequestID).
 				Error("Outbound response failed")
 			return err
 		case <-finishSignal:
 			log.
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("orig-target-id", originalReq.TargetID).
 				WithField("orig-request-id", originalReq.RequestID).
 				Info("Transmitted response")
@@ -771,7 +809,10 @@ func (c *pubsubReqRespClient) respond(params interface{}) error {
 		Expected: reflect.TypeOf(rrResponsePayload{}), Gotten: reflect.TypeOf(params),
 	}
 	logTags := c.GetLogTagsForContext(c.processorContext)
-	log.WithError(err).WithFields(logTags).Error("'Respond' processing failure")
+	log.
+		WithError(err).
+		WithFields(UpdateCodePositionInTags(logTags)).
+		Error("'Respond' processing failure")
 	return err
 }
 
@@ -792,20 +833,20 @@ func (c *pubsubReqRespClient) handleRespond(params rrResponsePayload) error {
 
 	// Publish the message
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Debug("Publishing new response")
 	if _, err := c.psClient.Publish(
 		c.processorContext, params.request.targetID, params.message, params.metadata, true,
 	); err != nil {
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			Error("PubSub publish failed")
 		return err
 	}
 
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Debug("Published new request")
 
 	// Unblock the original caller
@@ -850,20 +891,29 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 	requestID, ok := metadata[rrMsgAttributeNameRequestID]
 	if !ok {
 		err := NewValidationError("message did not come with request ID", nil, true)
-		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Unable to process inbound message")
 		return err
 	}
 
 	senderID, ok := metadata[rrMsgAttributeNameSenderID]
 	if !ok {
 		err := NewValidationError("message did not come with sender ID", nil, true)
-		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Unable to process inbound message")
 		return err
 	}
 
 	if msgTargetID, ok := metadata[rrMsgAttributeNameTargetID]; !ok {
 		err := NewValidationError("message did not come with target ID", nil, true)
-		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Unable to process inbound message")
 		return err
 	} else if msgTargetID != c.targetID {
 		err := NewValidationError(
@@ -871,7 +921,10 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 			nil,
 			true,
 		)
-		log.WithError(err).WithFields(logTags).Error("Unable to process inbound message")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Unable to process inbound message")
 		return err
 	}
 
@@ -896,7 +949,7 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 		}
 
 		log.
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("sender-id", senderID).
 			WithField("request-id", requestID).
 			Debug("Submitting inbound request for processing")
@@ -908,7 +961,7 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 			)
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("sender-id", senderID).
 				WithField("request-id", requestID).
 				Error("Failed to submit 'ReceivePubSubMsg' job for inbound request")
@@ -927,7 +980,7 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 		}
 
 		log.
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("sender-id", senderID).
 			WithField("request-id", requestID).
 			Debug("Submitting inbound response for processing")
@@ -939,7 +992,7 @@ func (c *pubsubReqRespClient) ReceivePubSubMsg(
 			)
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("sender-id", senderID).
 				WithField("request-id", requestID).
 				Error("Failed to submit 'ReceivePubSubMsg' job for inbound response")
@@ -964,7 +1017,7 @@ func (c *pubsubReqRespClient) receiveInboundRequestMsg(params interface{}) error
 	logTags := c.GetLogTagsForContext(c.processorContext)
 	log.
 		WithError(err).
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Error("'ReceivePubSubMsg' inbound request processing failure")
 	return err
 }
@@ -976,7 +1029,10 @@ func (c *pubsubReqRespClient) handleInboundRequest(params rrInboundRequestPayloa
 
 	if c.inboundRequestHandler == nil {
 		err := NewRuntimeError("no handler installed for inbound requests", nil, true)
-		log.WithError(err).WithFields(logTags).Error("Unable to process inbound request")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Unable to process inbound request")
 		return err
 	}
 
@@ -991,14 +1047,17 @@ func (c *pubsubReqRespClient) handleInboundRequest(params rrInboundRequestPayloa
 		Payload:   params.message,
 	}
 
-	log.WithFields(logTags).Debug("Forwarding request for processing")
+	log.WithFields(UpdateCodePositionInTags(logTags)).Debug("Forwarding request for processing")
 	// Call the request handler
 	if err := c.inboundRequestHandler(lclCtxt, forwardMsg); err != nil {
 		// TODO: in the future, sort out how to handle failure in upstream processing.
 		// Dead letter queue, retry, return to sender, etc.
-		log.WithError(err).WithFields(logTags).Error("Upstream failed to process inbound request")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Upstream failed to process inbound request")
 	}
-	log.WithFields(logTags).Debug("Request processed")
+	log.WithFields(UpdateCodePositionInTags(logTags)).Debug("Request processed")
 
 	return nil
 }
@@ -1017,7 +1076,7 @@ func (c *pubsubReqRespClient) receiveInboundResponseMsg(params interface{}) erro
 	logTags := c.GetLogTagsForContext(c.processorContext)
 	log.
 		WithError(err).
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Error("'ReceivePubSubMsg' inbound response processing failure")
 	return err
 }
@@ -1033,7 +1092,10 @@ func (c *pubsubReqRespClient) handleInboundResponse(params rrInboundResponsePayl
 			nil,
 			true,
 		)
-		log.WithError(err).WithFields(logTags).Error("Unable to process inbound response")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Unable to process inbound response")
 		return err
 	}
 
@@ -1052,21 +1114,24 @@ func (c *pubsubReqRespClient) handleInboundResponse(params rrInboundResponsePayl
 		Payload:   params.message,
 	}
 
-	log.WithFields(logTags).Debug("Forwarding response for processing")
+	log.WithFields(UpdateCodePositionInTags(logTags)).Debug("Forwarding response for processing")
 	// Forward the response to the original caller
 	if err := originalReq.callParam.RespHandler(lclCtxt, forwardMsg); err != nil {
 		// TODO: in the future, sort out how to handle failure in upstream processing.
 		// Dead letter queue, retry, return to sender, etc.
-		log.WithError(err).WithFields(logTags).Error("Upstream failed to process inbound response")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Upstream failed to process inbound response")
 	}
-	log.WithFields(logTags).Debug("Response processed")
+	log.WithFields(UpdateCodePositionInTags(logTags)).Debug("Response processed")
 
 	// Record one more response collected
 	originalReq.receivedRespCount++
 
 	// Clean up if all responses received
 	if originalReq.receivedRespCount == originalReq.expectedRespCount {
-		log.WithFields(logTags).Debug("All expected responses received")
+		log.WithFields(UpdateCodePositionInTags(logTags)).Debug("All expected responses received")
 
 		// Forget the request entry
 		delete(c.outboundRequests, params.requestID)
@@ -1094,7 +1159,7 @@ func (c *pubsubReqRespClient) RequestTimeoutCheck(ctxt context.Context) error {
 	currentTime := time.Now().UTC()
 
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Debug("Submitting request timeout check trigger")
 
 	if err := c.outboundProcessor.Submit(
@@ -1103,7 +1168,7 @@ func (c *pubsubReqRespClient) RequestTimeoutCheck(ctxt context.Context) error {
 		exitErr := NewRuntimeError("Failed to submit 'RequestTimeoutCheck' job", err, false)
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			Error("Failed to submit 'RequestTimeoutCheck' job")
 		return exitErr
 	}
@@ -1120,7 +1185,10 @@ func (c *pubsubReqRespClient) requestTimeoutCheck(params interface{}) error {
 		Expected: reflect.TypeOf(rrRequestTimeoutCheckPayload{}), Gotten: reflect.TypeOf(params),
 	}
 	logTags := c.GetLogTagsForContext(c.processorContext)
-	log.WithError(err).WithFields(logTags).Error("'RequestTimeoutCheck' processing failure")
+	log.
+		WithError(err).
+		WithFields(UpdateCodePositionInTags(logTags)).
+		Error("'RequestTimeoutCheck' processing failure")
 	return err
 }
 
@@ -1131,16 +1199,20 @@ func (c *pubsubReqRespClient) handleRequestTimeoutCheck(params rrRequestTimeoutC
 	// Go through all the request, and find the ones which have timed out
 	removeRequests := []string{}
 	for requestID, request := range c.outboundRequests {
-		log.WithFields(logTags).Debugf("Checking request %s for timeout", request.String())
+		log.
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Debugf("Checking request %s for timeout", request.String())
 		if request.deadLine.Before(params.timestamp) && request.receivedRespCount < request.expectedRespCount {
-			log.WithFields(logTags).Infof("Request '%s' has timed out", requestID)
+			log.
+				WithFields(UpdateCodePositionInTags(logTags)).
+				Infof("Request '%s' has timed out", requestID)
 			removeRequests = append(removeRequests, requestID)
 
 			// Notify the original caller that the request timed out
 			if err := request.callParam.TimeoutHandler(c.parentContext); err != nil {
 				log.
 					WithError(err).
-					WithFields(logTags).
+					WithFields(UpdateCodePositionInTags(logTags)).
 					Errorf("Errored when calling timeout handler of request '%s'", requestID)
 			}
 		}

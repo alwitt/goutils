@@ -50,7 +50,7 @@ ProcessInboundRequest process inbound request
 func (d *RequestResponseDriver) ProcessInboundRequest(
 	ctxt context.Context, msg ReqRespMessage,
 ) error {
-	logTag := d.GetLogTagsForContext(ctxt)
+	logTags := d.GetLogTagsForContext(ctxt)
 
 	// Parse the message to determine the request
 	parsed, err := d.PayloadParser(msg.Payload)
@@ -58,7 +58,7 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 		exitErr := NewBadInputError("unable to parse request payload", err, true)
 		log.
 			WithError(err).
-			WithFields(logTag).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-sender", msg.SenderID).
 			WithField("request-id", msg.RequestID).
 			Error("Unable to parse request payload")
@@ -74,7 +74,7 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 		)
 		log.
 			WithError(err).
-			WithFields(logTag).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-sender", msg.SenderID).
 			WithField("request-id", msg.RequestID).
 			WithField("request-type", requestMsgType).
@@ -88,7 +88,7 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 		exitErr := NewRuntimeError("request processing failed", err, true)
 		log.
 			WithError(err).
-			WithFields(logTag).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-sender", msg.SenderID).
 			WithField("request-id", msg.RequestID).
 			WithField("request-type", requestMsgType).
@@ -102,7 +102,7 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 		exitErr := NewRuntimeError("failed to prepare response", err, true)
 		log.
 			WithError(err).
-			WithFields(logTag).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-sender", msg.SenderID).
 			WithField("request-id", msg.RequestID).
 			WithField("request-type", requestMsgType).
@@ -115,7 +115,7 @@ func (d *RequestResponseDriver) ProcessInboundRequest(
 		exitErr := NewRuntimeError("failed to send response", err, false)
 		log.
 			WithError(err).
-			WithFields(logTag).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-sender", msg.SenderID).
 			WithField("request-id", msg.RequestID).
 			WithField("request-type", requestMsgType).
@@ -151,7 +151,7 @@ func (d *RequestResponseDriver) MakeRequest(
 	respReceiveChan := make(chan ReqRespMessage, callParam.ExpectedResponsesCount+1)
 	respReceiveCB := func(_ context.Context, msg ReqRespMessage) error {
 		log.
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-instance", requestInstanceName).
 			Debug("Received response")
 		respReceiveChan <- msg
@@ -165,7 +165,7 @@ func (d *RequestResponseDriver) MakeRequest(
 		)
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-instance", requestInstanceName).
 			Debug("No responses received before timeout")
 		timeoutChan <- err
@@ -179,7 +179,7 @@ func (d *RequestResponseDriver) MakeRequest(
 	var rawResponse ReqRespMessage
 
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		WithField("request-instance", requestInstanceName).
 		Debug("Sending request")
 	// Make the call
@@ -188,14 +188,14 @@ func (d *RequestResponseDriver) MakeRequest(
 		exitErr := NewRuntimeError("failed to send request", err, false)
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-id", requestID).
 			WithField("request-instance", requestInstanceName).
 			Error("Failed to send request")
 		return nil, exitErr
 	}
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		WithField("request-id", requestID).
 		WithField("request-instance", requestInstanceName).
 		Debug("Sent request. Waiting for response...")
@@ -213,7 +213,7 @@ func (d *RequestResponseDriver) MakeRequest(
 			err := NewRuntimeError("timeout channel returned erroneous results", nil, true)
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("request-id", requestID).
 				WithField("request-instance", requestInstanceName).
 				Error("Request failed")
@@ -225,7 +225,7 @@ func (d *RequestResponseDriver) MakeRequest(
 				err := NewRuntimeError("response channel returned erroneous results", nil, true)
 				log.
 					WithError(err).
-					WithFields(logTags).
+					WithFields(UpdateCodePositionInTags(logTags)).
 					WithField("request-id", requestID).
 					WithField("request-instance", requestInstanceName).
 					Error("Request failed")
@@ -235,7 +235,7 @@ func (d *RequestResponseDriver) MakeRequest(
 		}
 
 		log.
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("request-id", requestID).
 			WithField("request-instance", requestInstanceName).
 			WithField("raw-msg", string(rawResponse.Payload)).
@@ -247,7 +247,7 @@ func (d *RequestResponseDriver) MakeRequest(
 			exitErr := NewConsistencyError("unable to parse response", err, true)
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("request-id", requestID).
 				WithField("request-instance", requestInstanceName).
 				Error("Unable to parse response")

@@ -93,7 +93,10 @@ func (b *messageBusImpl) CreateTopic(
 	defer b.lock.Unlock()
 
 	if existing, ok := b.topics[topicName]; ok {
-		log.WithFields(logTags).WithField("topic", topicName).Debug("Topic already defined")
+		log.
+			WithFields(UpdateCodePositionInTags(logTags)).
+			WithField("topic", topicName).
+			Debug("Topic already defined")
 		return existing, nil
 	}
 
@@ -105,7 +108,10 @@ func (b *messageBusImpl) CreateTopic(
 
 	b.topics[topicName] = topic
 
-	log.WithFields(logTags).WithField("topic", topicName).Info("Defined new topic")
+	log.
+		WithFields(UpdateCodePositionInTags(logTags)).
+		WithField("topic", topicName).
+		Info("Defined new topic")
 
 	return topic, nil
 }
@@ -146,7 +152,10 @@ func (b *messageBusImpl) DeleteTopic(ctxt context.Context, topicName string) err
 
 	delete(b.topics, topicName)
 
-	log.WithFields(logTags).WithField("topic", topicName).Info("Deleted topic")
+	log.
+		WithFields(UpdateCodePositionInTags(logTags)).
+		WithField("topic", topicName).
+		Info("Deleted topic")
 	return nil
 }
 
@@ -264,13 +273,13 @@ func (t *messageTopicImpl) Publish(
 		case <-lclCtxt.Done():
 			// write timed out
 			log.
-				WithFields(logTags).
+				WithFields(UpdateCodePositionInTags(logTags)).
 				WithField("subscriber", subscriber).
 				Error("Timed out sending message to subscriber")
 		}
 
 		log.
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("subscriber", subscriber).
 			Debug("Published message to subscriber")
 	}
@@ -318,7 +327,7 @@ func (t *messageTopicImpl) CreateSubscription(
 	t.subscriptions[subscriber] = msgBuffer
 
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		WithField("buffer-len", bufferLen).
 		Infof("Created new subscription '%s'", subscriber)
 
@@ -342,16 +351,16 @@ func (t *messageTopicImpl) DeleteSubscription(ctxt context.Context, subscriber s
 		return NewNotFoundError(fmt.Sprintf("unknown subscription '%s'", subscriber), nil, true)
 	}
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Debugf("Closing subscription '%s' channel", subscriber)
 	close(existing)
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Infof("Closed subscription '%s' channel", subscriber)
 	delete(t.subscriptions, subscriber)
 
 	log.
-		WithFields(logTags).
+		WithFields(UpdateCodePositionInTags(logTags)).
 		Infof("Deleted subscription '%s'", subscriber)
 
 	return nil

@@ -127,7 +127,10 @@ func (q *asyncQueueImpl[V]) Push(ctx context.Context, data V) error {
 
 	// Notify waiting caller
 	if err := q.newDataSignal.NotifyOne(); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Failed to notify awaiting data reader")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Failed to notify awaiting data reader")
 		return err
 	}
 
@@ -173,13 +176,16 @@ func (q *asyncQueueImpl[V]) Pop(
 
 		default:
 			// Any other error
-			log.WithError(err).WithFields(logTags).Error("Queue read error")
+			log.WithError(err).WithFields(UpdateCodePositionInTags(logTags)).Error("Queue read error")
 			return result, err
 		}
 
 		// Wait until data is available
 		if err := q.newDataSignal.Wait(ctx, newDataSignalFlag); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Error while awaiting new data")
+			log.
+				WithError(err).
+				WithFields(UpdateCodePositionInTags(logTags)).
+				Error("Error while awaiting new data")
 			return result, err
 		}
 	}

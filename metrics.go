@@ -367,7 +367,7 @@ func (c *metricsCollectorImpl) InstallCustomCounterVecMetrics(
 		)
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			Errorf("Failed to register new metrics '%s'", metricsName)
 		return nil, exitErr
 	}
@@ -387,7 +387,7 @@ func (c *metricsCollectorImpl) InstallCustomGaugeVecMetrics(
 		)
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(UpdateCodePositionInTags(logTags)).
 			Errorf("Failed to register new metrics '%s'", metricsName)
 		return nil, exitErr
 	}

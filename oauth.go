@@ -235,29 +235,43 @@ func (c *clientCredOAuthTokenManager) GetToken(
 
 	// Make the request
 	request := getTokenRequest{timestamp: timestamp, resultCB: resultCB, errorCB: errorCB}
-	log.WithFields(logTags).Debug("Submitting 'GetToken' job")
+	log.WithFields(UpdateCodePositionInTags(logTags)).Debug("Submitting 'GetToken' job")
 	if err := c.tasks.Submit(ctxt, request); err != nil {
 		exitErr := NewRuntimeError("failed to submit 'GetToken' job", err, false)
-		log.WithError(err).WithFields(logTags).Error("Failed to submit 'GetToken' job")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Failed to submit 'GetToken' job")
 		return "", exitErr
 	}
-	log.WithFields(logTags).Debug("Submitted 'GetToken' job. AWaiting response")
+	log.
+		WithFields(UpdateCodePositionInTags(logTags)).
+		Debug("Submitted 'GetToken' job. AWaiting response")
 
 	select {
 	case <-ctxt.Done():
 		err := NewTimeoutError("request timed out waiting for response", ctxt.Err(), true)
-		log.WithError(err).WithFields(logTags).Error("Unable to get current active token")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Unable to get current active token")
 		return "", err
 	case err, ok := <-errorChan:
 		if !ok {
 			err = NewRuntimeError("error channel failure", nil, true)
 		}
-		log.WithError(err).WithFields(logTags).Error("Unable to get current active token")
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Unable to get current active token")
 		return "", err
 	case token, ok := <-resultChan:
 		if !ok {
 			err := NewRuntimeError("result channel failure", nil, true)
-			log.WithError(err).WithFields(logTags).Error("Unable to get current active token")
+			log.
+				WithError(err).
+				WithFields(UpdateCodePositionInTags(logTags)).
+				Error("Unable to get current active token")
 			return "", err
 		}
 		return token, nil
@@ -274,7 +288,10 @@ func (c *clientCredOAuthTokenManager) processGetToken(params interface{}) error 
 		Gotten:   reflect.TypeOf(params),
 	}
 	logTags := c.GetLogTagsForContext(c.workerCtxt)
-	log.WithError(err).WithFields(logTags).Error("'GetToken' processing failure")
+	log.
+		WithError(err).
+		WithFields(UpdateCodePositionInTags(logTags)).
+		Error("'GetToken' processing failure")
 	return err
 }
 
@@ -282,7 +299,7 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 	logTags := c.GetLogTagsForContext(c.workerCtxt)
 
 	if c.token == nil || c.tokenExpire.Before(params.timestamp.Add(c.timeBuffer)) {
-		log.WithFields(logTags).Debug("Fetching new token")
+		log.WithFields(UpdateCodePositionInTags(logTags)).Debug("Fetching new token")
 
 		// Get new token
 		buildRequest := map[string]string{
@@ -310,7 +327,7 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 			Post(c.idpConfig.TokenEP)
 		if err != nil {
 			exitErr := NewRuntimeError("token endpoint call failed", err, true)
-			log.WithError(err).WithFields(logTags).Error("Token fetch failure")
+			log.WithError(err).WithFields(UpdateCodePositionInTags(logTags)).Error("Token fetch failure")
 			params.errorCB(exitErr)
 			return exitErr
 		}
@@ -324,16 +341,16 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 				nil,
 				true,
 			)
-			log.WithError(err).WithFields(logTags).Error("Token fetch failure")
+			log.WithError(err).WithFields(UpdateCodePositionInTags(logTags)).Error("Token fetch failure")
 			params.errorCB(err)
 			return err
 		}
 
-		log.WithFields(logTags).Debugf("Token response is %s", resp.Body())
+		log.WithFields(UpdateCodePositionInTags(logTags)).Debugf("Token response is %s", resp.Body())
 
 		if err := c.validate.Struct(&newToken); err != nil {
 			err := NewValidationError("invalid token response", err, true)
-			log.WithError(err).WithFields(logTags).Error("Invalid token response")
+			log.WithError(err).WithFields(UpdateCodePositionInTags(logTags)).Error("Invalid token response")
 			params.errorCB(err)
 			return err
 		}
@@ -345,9 +362,9 @@ func (c *clientCredOAuthTokenManager) handleGetToken(params getTokenRequest) err
 		c.token = &newToken.Token
 		c.tokenExpire = expireAt
 
-		log.WithFields(logTags).Debugf("New token expires at '%s'", expireAt)
+		log.WithFields(UpdateCodePositionInTags(logTags)).Debugf("New token expires at '%s'", expireAt)
 	} else {
-		log.WithFields(logTags).Debug("Reusing existing token")
+		log.WithFields(UpdateCodePositionInTags(logTags)).Debug("Reusing existing token")
 	}
 
 	// Return current active token

@@ -124,7 +124,7 @@ func (h RestAPIHandler) LoggingMiddleware(next http.HandlerFunc) http.HandlerFun
 		respLen := newRespWriter.Size()
 		respCode := newRespWriter.Status()
 		// Log level based on config
-		logHandle := log.WithFields(logTags).
+		logHandle := log.WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("response_code", respCode).
 			WithField("response_size", respLen).
 			WithField("response_timestamp", respTimestamp.UTC().Format(time.RFC3339Nano))
@@ -208,16 +208,20 @@ func (h RestAPIHandler) RequestPayloadDumpMiddleware(next http.HandlerFunc) http
 		// Read the entire request payload into memory. This consumes the payload.
 		var payloadCopy bytes.Buffer
 		if _, err := payloadCopy.ReadFrom(r.Body); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to read request payload for dump")
+			log.
+				WithError(err).
+				WithFields(UpdateCodePositionInTags(logTags)).
+				Error("Failed to read request payload for dump")
 		} else {
 			// Close the original request body to avoid resource leakage.
 			if err := r.Body.Close(); err != nil {
-				log.WithError(err).WithFields(logTags).Error("Failed to close original request body")
+				log.
+					WithError(err).
+					WithFields(UpdateCodePositionInTags(logTags)).
+					Error("Failed to close original request body")
 			}
-			// Reassign the request body to the copy so the payload remains readable downstream.
-			r.Body = io.NopCloser(&payloadCopy)
-			// Log level based on config
-			logHandle := log.WithFields(logTags)
+
+			logHandle := log.WithFields(UpdateCodePositionInTags(logTags))
 			switch h.LogLevel {
 			case HTTPLogLevelDEBUG:
 				logHandle.Debugf("Request payload is:\n\n%s\n\n", payloadCopy.String())
@@ -226,6 +230,9 @@ func (h RestAPIHandler) RequestPayloadDumpMiddleware(next http.HandlerFunc) http
 			default:
 				logHandle.Warnf("Request payload is:\n\n%s\n\n", payloadCopy.String())
 			}
+
+			// Reassign the request body to the copy so the payload remains readable downstream.
+			r.Body = io.NopCloser(&payloadCopy)
 		}
 
 		next(rw, r)

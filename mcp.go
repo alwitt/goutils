@@ -245,7 +245,7 @@ func (h MCPHandler) LoggingMiddleware(next mcp.MethodHandler) mcp.MethodHandler 
 			mcpRequestStr = builder.String()
 		}
 
-		logHandle := log.WithFields(logTags).
+		logHandle := log.WithFields(UpdateCodePositionInTags(logTags)).
 			WithField("mcp_response_timestamp", respTimestamp.UTC().Format(time.RFC3339Nano)).
 			WithField("mcp_request_duration_ms", duration.Milliseconds())
 		if err != nil {

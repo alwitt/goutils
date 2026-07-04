@@ -307,13 +307,15 @@ IntrospectToken perform introspection for a token
 	@return whether token is still valid
 */
 func (c *oidpClientImpl) IntrospectToken(ctxt context.Context, token string) (bool, error) {
-	logtags := c.GetLogTagsForContext(ctxt)
+	logTags := c.GetLogTagsForContext(ctxt)
 	if c.clientID == nil || c.clientSecret == nil || c.cfg.IntrospectionEP == "" {
 		// Introspection require
 		// * Introspection endpoint
 		// * Client ID
 		// * Client secret
-		log.WithFields(logtags).Error("Missing required settings to perform introspection")
+		log.
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Missing required settings to perform introspection")
 		return false, NewBadInputError(
 			"missing required settings to perform introspection", nil, true,
 		)
@@ -342,7 +344,10 @@ func (c *oidpClientImpl) IntrospectToken(ctxt context.Context, token string) (bo
 		exitErr := NewRuntimeError(
 			fmt.Sprintf("failed to call IDP for introspection at %s", introspectURL), err, true,
 		)
-		log.WithError(err).WithFields(logtags).Errorf("Introspect against %s failed", introspectURL)
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Errorf("Introspect against %s failed", introspectURL)
 		return false, exitErr
 	}
 	if !resp.IsSuccess() {
@@ -355,12 +360,17 @@ func (c *oidpClientImpl) IntrospectToken(ctxt context.Context, token string) (bo
 			nil,
 			true,
 		)
-		log.WithError(err).WithFields(logtags).Errorf("Introspect against %s failed", introspectURL)
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Errorf("Introspect against %s failed", introspectURL)
 		return false, err
 	}
 
 	// Parse the response
-	log.WithFields(logtags).Debugf("Raw introspect response %s", string(resp.Body()))
+	log.
+		WithFields(UpdateCodePositionInTags(logTags)).
+		Debugf("Raw introspect response %s", string(resp.Body()))
 
 	return response.Active, nil
 }
@@ -459,7 +469,10 @@ func (m JWTCheckMiddleware) ParseAndValidateJWT(next http.HandlerFunc) http.Hand
 			)
 			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
 			if err != nil {
-				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+				log.
+					WithError(err).
+					WithFields(UpdateCodePositionInTags(logTags)).
+					Error("Failed to form response")
 			}
 			return
 		}
@@ -471,7 +484,10 @@ func (m JWTCheckMiddleware) ParseAndValidateJWT(next http.HandlerFunc) http.Hand
 			)
 			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
 			if err != nil {
-				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+				log.
+					WithError(err).
+					WithFields(UpdateCodePositionInTags(logTags)).
+					Error("Failed to form response")
 			}
 			return
 		}
@@ -485,7 +501,10 @@ func (m JWTCheckMiddleware) ParseAndValidateJWT(next http.HandlerFunc) http.Hand
 			)
 			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
 			if err != nil {
-				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+				log.
+					WithError(err).
+					WithFields(UpdateCodePositionInTags(logTags)).
+					Error("Failed to form response")
 			}
 			return
 		}
@@ -498,7 +517,10 @@ func (m JWTCheckMiddleware) ParseAndValidateJWT(next http.HandlerFunc) http.Hand
 			)
 			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
 			if err != nil {
-				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+				log.
+					WithError(err).
+					WithFields(UpdateCodePositionInTags(logTags)).
+					Error("Failed to form response")
 			}
 			return
 		}
@@ -510,7 +532,10 @@ func (m JWTCheckMiddleware) ParseAndValidateJWT(next http.HandlerFunc) http.Hand
 			)
 			err := writeRESTResponse(w, http.StatusUnauthorized, resp, map[string]string{})
 			if err != nil {
-				log.WithError(err).WithFields(logTags).Error("Failed to form response")
+				log.
+					WithError(err).
+					WithFields(UpdateCodePositionInTags(logTags)).
+					Error("Failed to form response")
 			}
 			return
 		}
