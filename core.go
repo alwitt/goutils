@@ -45,6 +45,39 @@ func (c Component) NewLogTagsForContext() log.Fields {
 }
 
 /*
+updateCodePosition records the calling code's position (file, line, func) into the given
+log.Fields. Because the body calls runtime.Caller(skip+1), the skip parameter counts frames
+above this function's immediate caller: skip=0 records this function's immediate caller,
+skip=1 records the caller's caller, skip=2 the level above that, etc.
+
+	@param tags log.Fields - the log metadata to update
+	@param skip int - the number of stack frames to ascend to find the position to record
+*/
+func updateCodePosition(tags log.Fields, skip int) {
+	if pc, file, lineNo, ok := runtime.Caller(skip + 1); ok {
+		funcName := runtime.FuncForPC(pc).Name()
+		fileName := path.Base(file)
+		tags["file"] = fileName
+		tags["line"] = lineNo
+		tags["func"] = funcName
+	}
+}
+
+/*
+UpdateCodePositionInTags updates the file, line, and func entries of the given log.Fields to
+the position of the caller. Intended to be wrapped around a prepared log.Fields at the exact
+log site (e.g. log.WithFields(UpdateCodePositionInTags(tags))) so the recorded position
+reflects where the log entry is emitted, rather than where the tags were first built.
+
+	@param tags log.Fields - the log metadata to update
+	@return the same log.Fields, updated in place, for convenient chaining
+*/
+func UpdateCodePositionInTags(tags log.Fields) log.Fields {
+	updateCodePosition(tags, 1)
+	return tags
+}
+
+/*
 GetLogTagsForContext creates a new Apex log.Fields metadata structure for a specific context
 
 	@param ctxt context.Context - a request context
@@ -56,13 +89,7 @@ func (c Component) GetLogTagsForContext(ctxt context.Context) log.Fields {
 		modifer(ctxt, theTags)
 	}
 	// Add file location
-	if pc, file, lineNo, ok := runtime.Caller(1); ok {
-		funcName := runtime.FuncForPC(pc).Name()
-		fileName := path.Base(file)
-		theTags["file"] = fileName
-		theTags["line"] = lineNo
-		theTags["func"] = funcName
-	}
+	updateCodePosition(theTags, 1)
 	return theTags
 }
 
@@ -206,4 +233,38 @@ func RenderCallStack(stack []uintptr) string {
 		}
 	}
 	return b.String()
+}
+
+// ======================================================================================
+
+// GetTypedPtr helper function to convert from arbitrary type to a pointer of that type
+func GetTypedPtr[T any](org T) *T {
+	return &org
+}
+
+// ToString converts any type implementing Stringer to a string.
+func ToString[T fmt.Stringer](org T) string {
+	return org.String()
+}
+
+// SliceToString converts any slice of type implementing Stringer to a string slice.
+func SliceToString[T fmt.Stringer](org []T) []string {
+	result := make([]string, 0, len(org))
+	for _, entry := range org {
+		result = append(result, entry.String())
+	}
+	return result
+}
+
+// ======================================================================================
+
+// Enum is the constraint satisfied by a string-backed ENUM type that can enumerate its own
+// members via a Values() method.
+//
+// MCPInstallEnumSchema uses it to register an enumerated schema for the type without the
+// caller having to spell out the member list.
+type Enum[T ~string] interface {
+	~string
+	// Values returns the complete set of permitted members for the ENUM type.
+	Values() []T
 }
