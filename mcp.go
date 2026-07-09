@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -122,6 +123,9 @@ func mcpDenullType(schema *jsonschema.Schema) {
 	schema.Type = nonNull
 }
 
+// ======================================================================================
+// Tool Registration
+
 /*
 MCPAddTool register a typed tool, building its input schema with ENUM support. It is a thin
 wrapper over mcp.AddTool that pre-populates Tool.InputSchema (see mcpInputSchemaFor); passing a
@@ -148,6 +152,86 @@ func MCPAddTool[In, Out any](
 	mcp.AddTool(server, tool, handler)
 	return nil
 }
+
+/*
+MCPAddToolWithSchema register a typed tool with a specific input JSON schema. It is a thin
+wrapper over mcp.AddTool that pre-populates Tool.InputSchema.
+
+	@param server *mcp.Server - target MCP server to register the tool against
+	@param tool *mcp.Tool - the tool definition; its InputSchema is populated in place
+	@param inputSchema *jsonschema.Schema - the specific input schema the tool uses
+	@param handler mcp.ToolHandlerFor[In, Out] - the tool call handler for input type In and
+	    output type Out
+	@returns error if the input schema for In could not be built
+*/
+func MCPAddToolWithSchema[In, Out any](
+	server *mcp.Server,
+	tool *mcp.Tool,
+	inputSchema *jsonschema.Schema,
+	handler mcp.ToolHandlerFor[In, Out],
+) error {
+	// Specifically define the input schema
+	if inputSchema != nil {
+		resolved, err := mcpResolveToolInputSchema(tool.Name, inputSchema)
+		if err != nil {
+			return err
+		}
+		tool.InputSchema = resolved
+	}
+	mcp.AddTool(server, tool, handler)
+	return nil
+}
+
+/*
+mcpResolveToolInputSchema validate and resolve a tool's input JSON schema. It first asserts the
+schema is well-formedness mandate (object schema with additionalProperties:false), then resolves
+the schema so it is ready to assign to Tool.InputSchema.
+
+	@param name string - the tool name, used in error messages
+	@param inputSchema *jsonschema.Schema - the schema to validate and resolve
+	@returns the resolved schema, or an error if it is malformed or cannot resolve
+*/
+func mcpResolveToolInputSchema(
+	name string, inputSchema *jsonschema.Schema,
+) (*jsonschema.Schema, error) {
+	// Assert well-formedness before resolving (config validation, not argument
+	// validation): the root must be an object schema carrying
+	// additionalProperties:false.
+	if err := assertToolInputSchema(name, inputSchema); err != nil {
+		return nil, err
+	}
+	resolved, err := inputSchema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
+	if err != nil {
+		return nil, NewValidationError(
+			"tool '"+name+"' has invalid input schema", err, true,
+		)
+	}
+	return resolved.Schema(), nil
+}
+
+// assertToolInputSchema enforces the mandate on a tool's root input schema: it must be an object
+// schema that forbids additional properties, so an agent cannot smuggle unexpected keys past the
+// schema into the invocation layer.
+//
+// additionalProperties:false unmarshals into a non-nil "false schema" (a *Schema whose Not is set),
+// distinct from additionalProperties being absent (nil), true, or a sub-schema.
+func assertToolInputSchema(name string, s *jsonschema.Schema) error {
+	if s.Type != "object" && !slices.Contains(s.Types, "object") {
+		return NewValidationError(
+			"tool '"+name+"' input schema must be of type object", nil, true,
+		)
+	}
+	ap := s.AdditionalProperties
+	if ap == nil || ap.Not == nil {
+		return NewValidationError(
+			"tool '"+name+"' input schema must set additionalProperties:false", nil, true,
+		)
+	}
+	return nil
+}
+
+// ======================================================================================
+// Helpers
 
 // MCPTextResult build a successful tool result carrying a single plain-text content block. Used
 // by the action tools, whose meaningful result is a short confirmation string.
