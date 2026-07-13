@@ -23,9 +23,9 @@ const timeoutExitCode = 124
 // emptyDir{medium: Memory} on Kubernetes.
 type InMemoryWritableDir struct {
 	// Path the directory within the container to back with the memory-backed writable mount
-	Path string `json:"path" validate:"required"`
+	Path string `json:"path" validate:"required" jsonschema:"the absolute directory path within the container to back with the memory-backed writable mount; required and must be an absolute path"`
 	// SizeLimit size of the mount in bytes; defaults to DefaultInMemoryWritableDirSize when 0
-	SizeLimit int64 `json:"size_limit,omitempty" validate:"omitempty,gt=0"`
+	SizeLimit int64 `json:"size_limit,omitempty" validate:"omitempty,gt=0" jsonschema:"size of the mount in bytes; must be > 0 when set; defaults to 67108864 (64 MiB) when omitted"`
 }
 
 // Size resolve SizeLimit, defaulting when unset
@@ -39,12 +39,12 @@ func (m InMemoryWritableDir) Size() int64 {
 // ContainerHostMount a host path bind-mounted into the container
 type ContainerHostMount struct {
 	// Path host path to mount
-	Path string `json:"path" validate:"required"`
+	Path string `json:"path" validate:"required" jsonschema:"the host path to mount; required and must be an absolute path"`
 	// ReadOnly whether to mount the path read-only; defaults to true when nil
-	ReadOnly *bool `json:"read_only,omitempty"`
+	ReadOnly *bool `json:"read_only,omitempty" jsonschema:"whether to mount the path read-only; defaults to true when omitted"`
 	// MountPath path within the container to mount the host path. The mount path will
 	// mirror the host path if this is not specified.
-	MountPath *string `json:"mount_path,omitempty"`
+	MountPath *string `json:"mount_path,omitempty" jsonschema:"absolute path within the container to mount the host path at; mirrors the host path when omitted"`
 }
 
 // IsReadOnly resolve ReadOnly, defaulting to true when unset
@@ -69,22 +69,22 @@ func (m ContainerHostMount) GetMountPath() string {
 // client, not here.
 type ContainerVolume struct {
 	// Name identity of the volume / PVC
-	Name string `json:"name" validate:"required"`
+	Name string `json:"name" validate:"required" jsonschema:"identity of the volume / PVC; required"`
 	// Size requested capacity in bytes. Honored by Kubernetes (storage request) and by
 	// capacity-aware Docker volume drivers; the default Docker "local" driver treats it as
 	// advisory.
-	Size int64 `json:"size,omitempty" validate:"omitempty,gt=0"`
+	Size int64 `json:"size,omitempty" validate:"omitempty,gt=0" jsonschema:"requested capacity in bytes; must be > 0 when set. Honored by Kubernetes (storage request) and capacity-aware Docker volume drivers; the default Docker 'local' driver treats it as advisory"`
 }
 
 // ContainerVolumeMount mounts a named ContainerVolume / PVC into the container.
 type ContainerVolumeMount struct {
 	// Name the ContainerVolume / PVC name to mount
-	Name string `json:"name" validate:"required"`
+	Name string `json:"name" validate:"required" jsonschema:"the ContainerVolume / PVC name to mount; required"`
 	// MountPath path within the container to mount at
-	MountPath string `json:"mount_path" validate:"required"`
+	MountPath string `json:"mount_path" validate:"required" jsonschema:"the absolute path within the container to mount at; required and must be an absolute path"`
 	// ReadOnly whether to mount read-only; defaults to false when nil. Unlike a host mount,
 	// a persistent volume exists to be written to, so read-write is the sensible default.
-	ReadOnly *bool `json:"read_only,omitempty"`
+	ReadOnly *bool `json:"read_only,omitempty" jsonschema:"whether to mount read-only; defaults to false when omitted. Unlike a host mount, a persistent volume exists to be written to, so read-write is the sensible default"`
 }
 
 // IsReadOnly resolve ReadOnly, defaulting to false when unset
@@ -95,17 +95,17 @@ func (m ContainerVolumeMount) IsReadOnly() bool {
 // ContainerExtraHost an extra host-to-IP mapping injected into the container's /etc/hosts
 type ContainerExtraHost struct {
 	// Hosts the hostname to map
-	Hosts []string `json:"host" validate:"required"`
+	Hosts []string `json:"host" validate:"required" jsonschema:"the hostnames to map to the address; required and must contain at least one hostname"`
 	// Address the IP address the hostname resolves to
-	Address string `json:"address" validate:"required,ip"`
+	Address string `json:"address" validate:"required,ip" jsonschema:"the IP address the hostnames resolve to; required and must be a valid IP address"`
 }
 
 // ContainerEnvVar an environment variable set on the container process
 type ContainerEnvVar struct {
 	// Name the environment variable name
-	Name string `json:"name" validate:"required"`
+	Name string `json:"name" validate:"required" jsonschema:"the environment variable name; required"`
 	// Value the environment variable value
-	Value string `json:"value"`
+	Value string `json:"value" jsonschema:"the environment variable value; may be an empty string"`
 }
 
 // Default values applied for omitted container driver parameters.
@@ -135,9 +135,9 @@ const (
 // StreamIOParams settings for when streaming STDIN, STDERR, and STDOUT to and from the container
 type StreamIOParams struct {
 	// DisplayRows TTY number of rows (in cells).
-	DisplayRows uint16 `json:"display_rows" validate:"gte=30"`
+	DisplayRows uint16 `json:"display_rows" validate:"gte=30" jsonschema:"TTY number of rows (in cells); must be >= 30"`
 	// DisplayCols TTY number of columns (in cells).
-	DisplayCols uint16 `json:"display_cols" validate:"gte=80"`
+	DisplayCols uint16 `json:"display_cols" validate:"gte=80" jsonschema:"TTY number of columns (in cells); must be >= 80"`
 }
 
 // ContainerRuntimeParams parameters common to any container-orchestrating runtime (Docker
@@ -146,60 +146,60 @@ type StreamIOParams struct {
 // and add only the fields with no cross-runtime equivalent.
 type ContainerRuntimeParams struct {
 	// Image container image reference to run
-	Image string `json:"image" validate:"required"`
+	Image string `json:"image" validate:"required" jsonschema:"container image reference to run; required"`
 
 	// Entrypoint container entrypoint
-	Entrypoint []string `json:"entrypoint" validate:"required,gte=1"`
+	Entrypoint []string `json:"entrypoint" validate:"required,gte=1" jsonschema:"container entrypoint; required and must contain at least one element"`
 
 	// Commands ran by the entry point
-	Commands []string `json:"commands,omitempty" validate:"-"`
+	Commands []string `json:"commands,omitempty" validate:"-" jsonschema:"the arguments passed to the entrypoint"`
 
 	// Streaming when streaming STDIN, STDERR, and STDOUT to and from the container,
 	// additional configurations needed for streaming.
-	Streaming *StreamIOParams `json:"streaming,omitempty" validate:"omitempty"`
+	Streaming *StreamIOParams `json:"streaming,omitempty" validate:"omitempty" jsonschema:"additional configuration needed when streaming STDIN, STDERR, and STDOUT to and from the container; omit for a non-streaming (batch) run"`
 
 	// MemReservation soft memory reservation (e.g. "32m"); defaults when empty
-	MemReservation string `json:"mem_reservation,omitempty"`
+	MemReservation string `json:"mem_reservation,omitempty" jsonschema:"soft memory reservation (e.g. '32m'); defaults to '32m' when omitted"`
 	// MemLimit hard memory limit (e.g. "128m"); defaults when empty
-	MemLimit string `json:"mem_limit,omitempty"`
+	MemLimit string `json:"mem_limit,omitempty" jsonschema:"hard memory limit (e.g. '128m'); defaults to '128m' when omitted"`
 
 	// WorkingDir working directory for the container process; defaults to DefaultContainerWorkingDir
-	WorkingDir string `json:"working_dir,omitempty"`
+	WorkingDir string `json:"working_dir,omitempty" jsonschema:"working directory for the container process; defaults to '/tmp' when omitted"`
 
 	// WritableDirs memory-backed writable directories overlaid on the read-only rootfs
-	WritableDirs []InMemoryWritableDir `json:"writable_dirs,omitempty" validate:"omitempty,dive"`
+	WritableDirs []InMemoryWritableDir `json:"writable_dirs,omitempty" validate:"omitempty,dive" jsonschema:"memory-backed writable directories overlaid on the read-only rootfs"`
 	// HostMounts host paths bind-mounted into the container
-	HostMounts []ContainerHostMount `json:"host_mounts,omitempty" validate:"omitempty,dive" `
+	HostMounts []ContainerHostMount `json:"host_mounts,omitempty" validate:"omitempty,dive" jsonschema:"host paths bind-mounted into the container"`
 	// VolumeMounts named persistent volumes / PVCs mounted into the container. The volumes
 	// themselves are provisioned by the runtime's controller client, not by this spec.
-	VolumeMounts []ContainerVolumeMount `json:"volume_mounts,omitempty" validate:"omitempty,dive"`
+	VolumeMounts []ContainerVolumeMount `json:"volume_mounts,omitempty" validate:"omitempty,dive" jsonschema:"named persistent volumes / PVCs mounted into the container; the volumes themselves are provisioned by the runtime's controller client, not by this spec"`
 
 	// AddCapabilities Linux capabilities to add back on top of the dropped-by-default set
 	// (e.g. NET_BIND_SERVICE to bind ports below 1024)
-	AddCapabilities []string `json:"add_caps,omitempty"`
+	AddCapabilities []string `json:"add_caps,omitempty" jsonschema:"Linux capabilities to add back on top of the dropped-by-default set (e.g. NET_BIND_SERVICE to bind ports below 1024)"`
 
 	// ExtraHosts additional host-to-IP mappings for the container
-	ExtraHosts []ContainerExtraHost `json:"extra_hosts,omitempty" validate:"omitempty,dive"`
+	ExtraHosts []ContainerExtraHost `json:"extra_hosts,omitempty" validate:"omitempty,dive" jsonschema:"additional host-to-IP mappings for the container"`
 	// Environment additional environment variables for the container process
-	Environment []ContainerEnvVar `json:"environment,omitempty" validate:"omitempty,dive"`
+	Environment []ContainerEnvVar `json:"environment,omitempty" validate:"omitempty,dive" jsonschema:"additional environment variables for the container process"`
 
 	// StopSignal signal sent to request the container process stop during teardown;
 	// defaults to DefaultContainerStopSignal when empty
-	StopSignal goutils.ContainerStopSignalENUMType `json:"stop_signal,omitempty" validate:"omitempty,container_stop_signal"`
+	StopSignal goutils.ContainerStopSignalENUMType `json:"stop_signal,omitempty" validate:"omitempty,container_stop_signal" jsonschema:"signal sent to request the container process stop during teardown; defaults to SIGINT when omitted"`
 
 	// TimeoutSecs wall-clock timeout in seconds; clamped to the server ceiling. 0 (unset)
 	// means clamp to the server ceiling (treated as +infinity before the min).
-	TimeoutSecs int `json:"timeout_secs,omitempty" validate:"omitempty,gt=0"`
+	TimeoutSecs int `json:"timeout_secs,omitempty" validate:"omitempty,gt=0" jsonschema:"wall-clock timeout in seconds; must be > 0 when set; clamped to the server ceiling. Omit (0) to clamp to the server ceiling"`
 	// TimeoutPolicy how a timeout is packaged into the result; defaults to
 	// DefaultContainerTimeoutPolicy when empty
-	TimeoutPolicy goutils.ContainerTimeoutPolicyENUMType `json:"timeout_policy,omitempty" validate:"omitempty,container_timeout_policy"`
+	TimeoutPolicy goutils.ContainerTimeoutPolicyENUMType `json:"timeout_policy,omitempty" validate:"omitempty,container_timeout_policy" jsonschema:"how a timeout is packaged into the result; defaults to packaging the timeout as an error when omitted"`
 
 	// ReadOnlyRootFS mount the container root filesystem read-only; defaults to true when nil
-	ReadOnlyRootFS *bool `json:"read_only_rootfs,omitempty"`
+	ReadOnlyRootFS *bool `json:"read_only_rootfs,omitempty" jsonschema:"mount the container root filesystem read-only; defaults to true when omitted"`
 	// DropAllCapabilities drop all Linux capabilities; defaults to true when nil
-	DropAllCapabilities *bool `json:"drop_all_caps,omitempty"`
+	DropAllCapabilities *bool `json:"drop_all_caps,omitempty" jsonschema:"drop all Linux capabilities; defaults to true when omitted"`
 	// NoNewPrivileges set the no-new-privileges security option; defaults to true when nil
-	NoNewPrivileges *bool `json:"no_new_privileges,omitempty"`
+	NoNewPrivileges *bool `json:"no_new_privileges,omitempty" jsonschema:"set the no-new-privileges security option; defaults to true when omitted"`
 }
 
 // IsStreaming whether runtime setup for streaming

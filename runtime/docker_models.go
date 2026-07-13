@@ -14,13 +14,13 @@ const (
 // command can accept inbound connections
 type DockerPortPublish struct {
 	// ContainerPort the port the session command listens on inside the container
-	ContainerPort uint16 `json:"container_port" validate:"required"`
+	ContainerPort uint16 `json:"container_port" validate:"required" jsonschema:"the port the session command listens on inside the container; required and must be in 1-65535"`
 	// Protocol the port protocol; defaults to DefaultContainerPortProtocol when empty
-	Protocol string `json:"protocol,omitempty" validate:"omitempty,oneof=tcp udp"`
+	Protocol string `json:"protocol,omitempty" validate:"omitempty,oneof=tcp udp" jsonschema:"the port protocol; must be one of 'tcp' or 'udp'; defaults to 'tcp' when omitted"`
 	// HostPort the host port to bind; 0 requests an ephemeral host port
-	HostPort uint16 `json:"host_port,omitempty"`
+	HostPort uint16 `json:"host_port,omitempty" jsonschema:"the host port to bind, in 1-65535; omit (0) to request an ephemeral host port"`
 	// HostIP the host interface to bind to; defaults to DefaultContainerPublishHostIP when empty
-	HostIP string `json:"host_ip,omitempty" validate:"omitempty,ip"`
+	HostIP string `json:"host_ip,omitempty" validate:"omitempty,ip" jsonschema:"the host interface to bind to; must be a valid IP address when set; defaults to '127.0.0.1' when omitted"`
 }
 
 // ResolvedProtocol resolve Protocol, defaulting when empty
@@ -47,18 +47,18 @@ type DockerRuntimeParams struct {
 	ContainerRuntimeParams
 
 	// RunAsUser user to run the container process as; defaults to DefaultContainerRunAsUser
-	RunAsUser string `json:"run_as_user,omitempty"`
+	RunAsUser string `json:"run_as_user,omitempty" jsonschema:"user to run the container process as; defaults to 'nobody' when omitted"`
 	// RunAsGroup group to run the container process as; defaults to DefaultContainerRunAsGroup
-	RunAsGroup string `json:"run_as_group,omitempty"`
+	RunAsGroup string `json:"run_as_group,omitempty" jsonschema:"group to run the container process as; defaults to 'nogroup' when omitted"`
 
 	// NetworkMode the container network mode (e.g. "none", "bridge"); defaults to
 	// DefaultDockerNetworkMode. Must be routable when PublishPorts is set.
-	NetworkMode string `json:"network_mode,omitempty"`
+	NetworkMode string `json:"network_mode,omitempty" jsonschema:"the container network mode (e.g. 'none', 'bridge'); defaults to 'none' when omitted. Must be routable (not 'none') when publish_ports is set"`
 	// PublishPorts container ports published to the host for inbound connections
-	PublishPorts []DockerPortPublish `json:"publish_ports,omitempty" validate:"omitempty,dive"`
+	PublishPorts []DockerPortPublish `json:"publish_ports,omitempty" validate:"omitempty,dive" jsonschema:"container ports published to the host for inbound connections; requires a routable network_mode"`
 
 	// RemoveOnExit remove the container on teardown; defaults to true when nil
-	RemoveOnExit *bool `json:"remove_on_exit,omitempty"`
+	RemoveOnExit *bool `json:"remove_on_exit,omitempty" jsonschema:"remove the container on teardown; defaults to true when omitted"`
 }
 
 // IsRemoveOnExit resolve RemoveOnExit, defaulting to true when unset
