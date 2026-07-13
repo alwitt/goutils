@@ -60,6 +60,23 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      rustfs:
+        image: rustfs/rustfs:latest
+        ports:
+          - 9000:9000
+        env:
+          RUSTFS_ADDRESS: 0.0.0.0:9000
+          RUSTFS_CONSOLE_ENABLE: "false"
+          RUSTFS_ACCESS_KEY: admin
+          RUSTFS_SECRET_KEY: password
+          RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+          RUSTFS_VOLUMES: /data
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9000/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v6
 
@@ -80,6 +97,9 @@ jobs:
           UNITTEST_REDIS_HOST: 127.0.0.1
           UNITTEST_REDIS_PORT: "6379"
           UNITTEST_REDIS_DB: "1"
+          UNITTEST_S3_ENDPOINT: 127.0.0.1:9000
+          AWS_ACCESS_KEY_ID: admin
+          AWS_SECRET_ACCESS_KEY: password
         run: |
           echo "$GOOGLE_APPLICATION_CREDENTIALS_VAL" > /tmp/gcp-creds.json
           go test --count 1 -v -timeout 600s -short ./...

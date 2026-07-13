@@ -294,3 +294,18 @@ func NewDockerError(message string, core error, getCallStack bool) DockerError {
 	}
 	return DockerError{BaseError: base}
 }
+
+// ======================================================================================
+// Object Store Errors
+
+// ObjectStoreError error encountered with the object store
+type ObjectStoreError struct{ BaseError }
+
+// NewObjectStoreError builds an ObjectStoreError, optionally capturing the call stack.
+func NewObjectStoreError(message string, core error, getCallStack bool) ObjectStoreError {
+	base := BaseError{Name: "ObjectStoreError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = GetCallStack(1)
+	}
+	return ObjectStoreError{BaseError: base}
+}
