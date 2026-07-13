@@ -10,9 +10,9 @@ import (
 )
 
 // mustParseSchema unmarshals raw JSON into a *jsonschema.Schema, mirroring the way
-// config-supplied schemas reach the runtime (DESIGN.md §5.1). It fails the test on
-// a malformed fixture rather than returning an error, so the cases below assert
-// only on ResolveToolInputSchema's behavior.
+// config-supplied schemas reach the runtime. It fails the test on a malformed fixture
+// rather than returning an error, so the cases below assert only on ResolveToolInputSchema's
+// behavior.
 func mustParseSchema(t *testing.T, raw string) *jsonschema.Schema {
 	var s jsonschema.Schema
 	if err := json.Unmarshal([]byte(raw), &s); err != nil {
@@ -25,8 +25,8 @@ func TestMCPResolveToolInputSchema(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)
 
-	// cases exercises the well-formedness assertions (DESIGN.md §3.4 / §5.2) plus the
-	// resolve step. valid marks the schemas that should resolve without error.
+	// cases exercises the well-formedness assertions plus the resolve step. valid marks the schemas
+	// that should resolve without error.
 	cases := []struct {
 		name  string
 		raw   string
@@ -45,7 +45,7 @@ func TestMCPResolveToolInputSchema(t *testing.T) {
 			valid: true,
 		},
 		{
-			// a no-argument tool still emits a valid empty object schema (DESIGN.md §3.4)
+			// a no-argument tool still emits a valid empty object schema
 			name:  "empty object with additionalProperties:false",
 			raw:   `{"type":"object","properties":{},"additionalProperties":false}`,
 			valid: true,

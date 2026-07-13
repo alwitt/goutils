@@ -255,16 +255,3 @@ func SliceToString[T fmt.Stringer](org []T) []string {
 	}
 	return result
 }
-
-// ======================================================================================
-
-// Enum is the constraint satisfied by a string-backed ENUM type that can enumerate its own
-// members via a Values() method.
-//
-// MCPInstallEnumSchema uses it to register an enumerated schema for the type without the
-// caller having to spell out the member list.
-type Enum[T ~string] interface {
-	~string
-	// Values returns the complete set of permitted members for the ENUM type.
-	Values() []T
-}

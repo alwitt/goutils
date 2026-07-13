@@ -1,3 +1,5 @@
+//go:build need_gcp
+
 package goutils_test
 
 import (

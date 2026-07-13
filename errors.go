@@ -279,3 +279,18 @@ func NewRedisError(message string, core error, getCallStack bool) RedisError {
 	}
 	return RedisError{BaseError: base}
 }
+
+// ======================================================================================
+// Docker Errors
+
+// DockerError docker session driver specific error
+type DockerError struct{ BaseError }
+
+// NewDockerError builds a DockerError, optionally capturing the call stack.
+func NewDockerError(message string, core error, getCallStack bool) DockerError {
+	base := BaseError{Name: "DockerError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = GetCallStack(1)
+	}
+	return DockerError{BaseError: base}
+}
