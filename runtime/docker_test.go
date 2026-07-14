@@ -34,23 +34,24 @@ func testPtr[T any](v T) *T { return &v }
 
 // baseParams returns DockerRuntimeParams with the test image and a short timeout so a hung
 // container can never wedge the suite. NetworkMode is left unset (defaults to "none").
-func baseParams(entrypoint ...string) DockerRuntimeParams {
-	return DockerRuntimeParams{
-		ContainerRuntimeParams: ContainerRuntimeParams{
-			Image:       testImage,
-			Entrypoint:  entrypoint,
-			TimeoutSecs: 60,
-		},
-	}
+func baseParams(entrypoint ...string) (ContainerCommand, DockerRuntimeParams) {
+	return ContainerCommand{Entrypoint: entrypoint},
+		DockerRuntimeParams{
+			ContainerRuntimeParams: ContainerRuntimeParams{Image: testImage, TimeoutSecs: 60},
+		}
 }
 
 // runOnce builds a runtime, drives Start -> Wait -> Cleanup, and returns the result. ANSI
 // escapes are stripped so assertions match clean text. Cleanup is registered so the
 // container is removed even if an assertion fails.
 func runOnce(
-	ctxt context.Context, t *testing.T, name string, params DockerRuntimeParams,
+	ctxt context.Context,
+	t *testing.T,
+	name string,
+	command ContainerCommand,
+	params DockerRuntimeParams,
 ) SystemCallResp {
-	rt, err := NewDockerSystemCallRuntime(ctxt, name, params, true)
+	rt, err := NewDockerSystemCallRuntime(ctxt, name, command, params, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, rt.Cleanup(context.Background())) })
 
@@ -73,16 +74,16 @@ func TestDockerRuntimeBasicExecution(t *testing.T) {
 	// Exit 0 with a sentinel on stdout.
 	{
 		sentinel := "hello-" + uuid.NewString()
-		params := baseParams("sh", "-c", fmt.Sprintf("echo %s; exit 0", sentinel))
-		resp := runOnce(ctxt, t, uniqueName("basic"), params)
+		command, params := baseParams("sh", "-c", fmt.Sprintf("echo %s; exit 0", sentinel))
+		resp := runOnce(ctxt, t, uniqueName("basic"), command, params)
 		assert.Equal(0, resp.ExitCode)
 		assert.Contains(resp.Output, sentinel)
 	}
 
 	// A non-zero exit code is reported faithfully and does not surface as a Wait error.
 	{
-		params := baseParams("sh", "-c", "echo failing; exit 7")
-		resp := runOnce(ctxt, t, uniqueName("exit7"), params)
+		command, params := baseParams("sh", "-c", "echo failing; exit 7")
+		resp := runOnce(ctxt, t, uniqueName("exit7"), command, params)
 		assert.Equal(7, resp.ExitCode)
 		assert.Contains(resp.Output, "failing")
 	}
@@ -97,17 +98,17 @@ func TestDockerRuntimeWritableDir(t *testing.T) {
 	{
 		sentinel := "work-" + uuid.NewString()
 		script := fmt.Sprintf("echo %s > /work/f && cat /work/f", sentinel)
-		params := baseParams("sh", "-c", script)
+		command, params := baseParams("sh", "-c", script)
 		params.WritableDirs = []InMemoryWritableDir{{Path: "/work"}}
-		resp := runOnce(ctxt, t, uniqueName("writabledir"), params)
+		resp := runOnce(ctxt, t, uniqueName("writabledir"), command, params)
 		assert.Equal(0, resp.ExitCode)
 		assert.Contains(resp.Output, sentinel)
 	}
 
 	// Negative: the rootfs really is read-only, so writing outside a writable dir fails.
 	{
-		params := baseParams("sh", "-c", "echo x > /root/should-fail")
-		resp := runOnce(ctxt, t, uniqueName("readonlyroot"), params)
+		command, params := baseParams("sh", "-c", "echo x > /root/should-fail")
+		resp := runOnce(ctxt, t, uniqueName("readonlyroot"), command, params)
 		assert.NotEqual(0, resp.ExitCode)
 	}
 }
@@ -124,13 +125,13 @@ func TestDockerRuntimeHostMount(t *testing.T) {
 	hostFile := filepath.Join(dir, "hostfile.txt")
 	require.NoError(t, os.WriteFile(hostFile, []byte(sentinel), 0o644))
 
-	params := baseParams("sh", "-c", "cat /hostdata/hostfile.txt")
+	command, params := baseParams("sh", "-c", "cat /hostdata/hostfile.txt")
 	params.HostMounts = []ContainerHostMount{{
 		Path:      dir,
 		MountPath: testPtr("/hostdata"),
 		ReadOnly:  testPtr(true),
 	}}
-	resp := runOnce(ctxt, t, uniqueName("hostmount"), params)
+	resp := runOnce(ctxt, t, uniqueName("hostmount"), command, params)
 	assert.Equal(0, resp.ExitCode)
 	assert.Contains(resp.Output, sentinel)
 }
@@ -156,21 +157,21 @@ func TestDockerRuntimeVolumeRoundTrip(t *testing.T) {
 	// Writer container writes a sentinel into the volume. A fresh named volume is root-owned,
 	// so run as root.
 	{
-		params := baseParams("sh", "-c", fmt.Sprintf("echo %s > /vol/data.txt", sentinel))
+		command, params := baseParams("sh", "-c", fmt.Sprintf("echo %s > /vol/data.txt", sentinel))
 		params.RunAsUser = "root"
 		params.RunAsGroup = "root"
 		params.VolumeMounts = []ContainerVolumeMount{{Name: volName, MountPath: "/vol"}}
-		resp := runOnce(ctxt, t, uniqueName("volwriter"), params)
+		resp := runOnce(ctxt, t, uniqueName("volwriter"), command, params)
 		assert.Equal(0, resp.ExitCode)
 	}
 
 	// A separate reader container reads the file back, proving cross-container persistence.
 	{
-		params := baseParams("sh", "-c", "cat /vol/data.txt")
+		command, params := baseParams("sh", "-c", "cat /vol/data.txt")
 		params.RunAsUser = "root"
 		params.RunAsGroup = "root"
 		params.VolumeMounts = []ContainerVolumeMount{{Name: volName, MountPath: "/vol"}}
-		resp := runOnce(ctxt, t, uniqueName("volreader"), params)
+		resp := runOnce(ctxt, t, uniqueName("volreader"), command, params)
 		assert.Equal(0, resp.ExitCode)
 		assert.Contains(resp.Output, sentinel)
 	}
@@ -186,12 +187,12 @@ func TestDockerRuntimeExtraHosts(t *testing.T) {
 	// resolve to the shared address.
 	const addr = "10.9.8.7"
 	script := "getent hosts myhost.local; getent hosts alt.local"
-	params := baseParams("sh", "-c", script)
+	command, params := baseParams("sh", "-c", script)
 	params.ExtraHosts = []ContainerExtraHost{{
 		Hosts:   []string{"myhost.local", "alt.local"},
 		Address: addr,
 	}}
-	resp := runOnce(ctxt, t, uniqueName("extrahosts"), params)
+	resp := runOnce(ctxt, t, uniqueName("extrahosts"), command, params)
 	assert.Equal(0, resp.ExitCode)
 	assert.Contains(resp.Output, "myhost.local")
 	assert.Contains(resp.Output, "alt.local")
@@ -206,12 +207,12 @@ func TestDockerRuntimeEnvVars(t *testing.T) {
 	// Environment variables set on the container reach the process.
 	script := `python -c 'import os; print("FOO="+os.environ.get("FOO","")); ` +
 		`print("BAZ="+os.environ.get("BAZ",""))'`
-	params := baseParams("sh", "-c", script)
+	command, params := baseParams("sh", "-c", script)
 	params.Environment = []ContainerEnvVar{
 		{Name: "FOO", Value: "bar123"},
 		{Name: "BAZ", Value: "qux"},
 	}
-	resp := runOnce(ctxt, t, uniqueName("envvars"), params)
+	resp := runOnce(ctxt, t, uniqueName("envvars"), command, params)
 	assert.Equal(0, resp.ExitCode)
 	assert.Contains(resp.Output, "FOO=bar123")
 	assert.Contains(resp.Output, "BAZ=qux")
@@ -226,8 +227,14 @@ const capBndBit = 13 // CAP_NET_RAW
 // mask. CapBnd (not CapEff) is the reliable signal: it reflects exactly what CapDrop/CapAdd
 // control, independent of whether the process runs as root. The runtime runs as `nobody`, so
 // CapEff would always be empty and tell us nothing.
-func readCapBnd(ctxt context.Context, t *testing.T, name string, params DockerRuntimeParams) uint64 {
-	resp := runOnce(ctxt, t, name, params)
+func readCapBnd(
+	ctxt context.Context,
+	t *testing.T,
+	name string,
+	command ContainerCommand,
+	params DockerRuntimeParams,
+) uint64 {
+	resp := runOnce(ctxt, t, name, command, params)
 	require.Equal(t, 0, resp.ExitCode)
 
 	var hex string
@@ -255,17 +262,17 @@ func TestDockerRuntimeAddCapabilities(t *testing.T) {
 	// Negative: with the default drop-all baseline and no additions, the bounding set is
 	// empty, so the NET_RAW bit is absent.
 	{
-		params := baseParams("sh", "-c", script)
-		mask := readCapBnd(ctxt, t, uniqueName("nocaps"), params)
+		command, params := baseParams("sh", "-c", script)
+		mask := readCapBnd(ctxt, t, uniqueName("nocaps"), command, params)
 		assert.Zero(mask&(uint64(1)<<capBndBit), "NET_RAW must be absent by default (CapBnd=%016x)", mask)
 	}
 
 	// Positive: adding NET_RAW back restores exactly that bit in the bounding set, proving
 	// AddCapabilities is plumbed through to Docker's CapAdd.
 	{
-		params := baseParams("sh", "-c", script)
+		command, params := baseParams("sh", "-c", script)
 		params.AddCapabilities = []string{"NET_RAW"}
-		mask := readCapBnd(ctxt, t, uniqueName("netraw"), params)
+		mask := readCapBnd(ctxt, t, uniqueName("netraw"), command, params)
 		assert.NotZero(mask&(uint64(1)<<capBndBit), "NET_RAW must be present when added (CapBnd=%016x)", mask)
 	}
 }
@@ -284,9 +291,9 @@ func TestDockerRuntimeEgress(t *testing.T) {
 		"except Exception as e:\n" +
 		"    print('ERROR', e); sys.exit(1)\n"
 
-	params := baseParams("python", "-c", src)
+	command, params := baseParams("python", "-c", src)
 	params.NetworkMode = "bridge"
-	resp := runOnce(ctxt, t, uniqueName("egress"), params)
+	resp := runOnce(ctxt, t, uniqueName("egress"), command, params)
 	assert.Equal(0, resp.ExitCode)
 	assert.Contains(resp.Output, "STATUS 200")
 }
@@ -321,7 +328,7 @@ func TestDockerRuntimeIngress(t *testing.T) {
 	require.NoError(t, os.Chmod(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "srv.py"), []byte(ingressServerSrc), 0o644))
 
-	params := baseParams("python", "/mnt/srv.py")
+	command, params := baseParams("python", "/mnt/srv.py")
 	params.NetworkMode = "bridge"
 	params.HostMounts = []ContainerHostMount{{
 		Path:      dir,
@@ -334,7 +341,7 @@ func TestDockerRuntimeIngress(t *testing.T) {
 
 	// Ingress needs the host to connect while the container runs, so drive the runtime
 	// directly rather than via runOnce (which blocks on Wait).
-	rt, err := NewDockerSystemCallRuntime(ctxt, uniqueName("ingress"), params, true)
+	rt, err := NewDockerSystemCallRuntime(ctxt, uniqueName("ingress"), command, params, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(rt.Cleanup(context.Background())) })
 	require.NoError(t, rt.Start(ctxt))
@@ -368,9 +375,13 @@ func TestDockerRuntimeIngress(t *testing.T) {
 // on the error — used by tests (like timeout) whose expected outcome is a non-nil error.
 // Cleanup is registered so the container is force-removed regardless.
 func startAndWait(
-	ctxt context.Context, t *testing.T, name string, params DockerRuntimeParams,
+	ctxt context.Context,
+	t *testing.T,
+	name string,
+	command ContainerCommand,
+	params DockerRuntimeParams,
 ) (SystemCallResp, error) {
-	rt, err := NewDockerSystemCallRuntime(ctxt, name, params, true)
+	rt, err := NewDockerSystemCallRuntime(ctxt, name, command, params, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, rt.Cleanup(context.Background())) })
 	require.NoError(t, rt.Start(ctxt))
@@ -383,17 +394,18 @@ func TestDockerRuntimeTimeout(t *testing.T) {
 	ctxt := context.Background()
 
 	// A 2s TTL against a `sleep 3600` always times out. Force SIGKILL as the stop signal.
-	timeoutParams := func() DockerRuntimeParams {
-		p := baseParams("sleep", "3600")
+	buildParams := func() (ContainerCommand, DockerRuntimeParams) {
+		c, p := baseParams("sleep", "3600")
 		p.TimeoutSecs = 2
 		p.StopSignal = goutils.ContainerStopSignalSIGKILL
-		return p
+		return c, p
 	}
 
 	// Sub-case A: default policy (TIMEOUT_IS_ERROR) surfaces the timeout as a DockerError.
 	{
 		start := time.Now()
-		_, err := startAndWait(ctxt, t, uniqueName("timeout-err"), timeoutParams())
+		command, params := buildParams()
+		_, err := startAndWait(ctxt, t, uniqueName("timeout-err"), command, params)
 		assert.Error(err)
 		var dockerErr goutils.DockerError
 		assert.True(errors.As(err, &dockerErr))
@@ -405,9 +417,9 @@ func TestDockerRuntimeTimeout(t *testing.T) {
 	// Sub-case B: TIMEOUT_IS_OK packages the timeout as a success carrying the sentinel exit
 	// code (124), with no error.
 	{
-		params := timeoutParams()
+		command, params := buildParams()
 		params.TimeoutPolicy = goutils.ContainerTimeoutPolicyOK
-		resp, err := startAndWait(ctxt, t, uniqueName("timeout-ok"), params)
+		resp, err := startAndWait(ctxt, t, uniqueName("timeout-ok"), command, params)
 		assert.NoError(err)
 		assert.Equal(124, resp.ExitCode)
 	}
@@ -436,7 +448,7 @@ func TestDockerRuntimeStreaming(t *testing.T) {
 	// The token is host-generated and passed via env, so the "random" reply is deterministic.
 	token := uuid.NewString()
 
-	params := baseParams("python", "/mnt/srv.py")
+	command, params := baseParams("python", "/mnt/srv.py")
 	params.Streaming = &StreamIOParams{DisplayRows: 40, DisplayCols: 120}
 	params.Environment = []ContainerEnvVar{{Name: "TOKEN", Value: token}}
 	params.HostMounts = []ContainerHostMount{{
@@ -445,7 +457,7 @@ func TestDockerRuntimeStreaming(t *testing.T) {
 		ReadOnly:  testPtr(true),
 	}}
 
-	rt, err := NewDockerSystemCallRuntime(ctxt, uniqueName("streaming"), params, true)
+	rt, err := NewDockerSystemCallRuntime(ctxt, uniqueName("streaming"), command, params, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(rt.Cleanup(context.Background())) })
 	require.NoError(t, rt.Start(ctxt))
@@ -481,8 +493,8 @@ func TestDockerRuntimeStreamingGuards(t *testing.T) {
 
 	// A non-streaming runtime (Streaming nil) rejects PipeInput/PipeOutput with a consistency
 	// error rather than operating on a nil hijacked connection.
-	params := baseParams("sh", "-c", "true")
-	rt, err := NewDockerSystemCallRuntime(ctxt, uniqueName("noguard"), params, true)
+	command, params := baseParams("sh", "-c", "true")
+	rt, err := NewDockerSystemCallRuntime(ctxt, uniqueName("noguard"), command, params, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(rt.Cleanup(context.Background())) })
 

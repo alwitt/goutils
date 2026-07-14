@@ -108,6 +108,14 @@ type ContainerEnvVar struct {
 	Value string `json:"value" jsonschema:"the environment variable value; may be an empty string"`
 }
 
+// ContainerCommand the command to execute in a container runtime
+type ContainerCommand struct {
+	// Entrypoint container entrypoint
+	Entrypoint []string `json:"entrypoint" validate:"required,gte=1" jsonschema:"container entrypoint; required and must contain at least one element"`
+	// Commands ran by the entry point
+	Commands []string `json:"commands,omitempty" validate:"-" jsonschema:"the arguments passed to the entrypoint"`
+}
+
 // Default values applied for omitted container driver parameters.
 const (
 	// DefaultInMemoryWritableDirSize default memory-backed writable dir size in bytes (64 MiB)
@@ -147,12 +155,6 @@ type StreamIOParams struct {
 type ContainerRuntimeParams struct {
 	// Image container image reference to run
 	Image string `json:"image" validate:"required" jsonschema:"container image reference to run; required"`
-
-	// Entrypoint container entrypoint
-	Entrypoint []string `json:"entrypoint" validate:"required,gte=1" jsonschema:"container entrypoint; required and must contain at least one element"`
-
-	// Commands ran by the entry point
-	Commands []string `json:"commands,omitempty" validate:"-" jsonschema:"the arguments passed to the entrypoint"`
 
 	// Streaming when streaming STDIN, STDERR, and STDOUT to and from the container,
 	// additional configurations needed for streaming.

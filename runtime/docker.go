@@ -44,6 +44,9 @@ type dockerSystemCallRuntime struct {
 	// tornDown guards Cleanup so the container is removed / the client closed at most
 	// once. After cleanup the container ID is gone and must not be acted on again.
 	tornDown atomic.Bool
+
+	// command what to run in the container
+	command ContainerCommand
 }
 
 /*
@@ -53,13 +56,18 @@ until Start is called.
 
 	@param ctx context.Context - execution context (used for log-tag derivation)
 	@param name string - a descriptive name for the runtime
+	@param command ContainerCommandParams - the command to execute within the container
 	@param params DockerRuntimeParams - docker runtime parameter
 	@param clearANSIFromOutput bool - whether to remove ANSI escape sequences from output
 	    when returning system call output
 	@returns the new runtime
 */
 func NewDockerSystemCallRuntime(
-	_ context.Context, name string, params DockerRuntimeParams, clearANSIFromOutput bool,
+	_ context.Context,
+	name string,
+	command ContainerCommand,
+	params DockerRuntimeParams,
+	clearANSIFromOutput bool,
 ) (SystemCallRuntime, error) {
 	instanceID := ulid.Make().String()
 
@@ -80,6 +88,10 @@ func NewDockerSystemCallRuntime(
 		return nil, goutils.NewValidationError("docker runtime params is invalid", err, true)
 	}
 
+	if err := validate.Struct(&command); err != nil {
+		return nil, goutils.NewValidationError("runtime command is invalid", err, true)
+	}
+
 	instance := &dockerSystemCallRuntime{
 		Component: goutils.Component{
 			LogTags: logTags,
@@ -93,6 +105,7 @@ func NewDockerSystemCallRuntime(
 		cli:         nil,
 		containerID: "",
 		stripANSI:   clearANSIFromOutput,
+		command:     command,
 	}
 	instance.name = instance.containerName(name, instanceID)
 	instance.LogTags["container"] = instance.name
@@ -138,7 +151,7 @@ func (d *dockerSystemCallRuntime) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	containerCfg := d.buildContainerConfig(d.params.Entrypoint, d.params.Commands, exposedPorts)
+	containerCfg := d.buildContainerConfig(d.command.Entrypoint, d.command.Commands, exposedPorts)
 	hostCfg, err := d.buildHostConfig(portBindings)
 	if err != nil {
 		return err
