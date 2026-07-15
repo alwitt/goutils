@@ -316,6 +316,115 @@ func TestRedisQueueBasicPopAndMove(t *testing.T) {
 	}
 }
 
+func TestRedisQueueRemoveAndMove(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	redisConnect := getRedisConnectParamForTest(assert)
+	client, err := redis.NewClient(utCtx, redisConnect)
+	assert.Nil(err)
+
+	sourceName := uuid.NewString()
+	destName := uuid.NewString()
+
+	source, err := client.GetQueueHandle(utCtx, sourceName)
+	assert.Nil(err)
+	defer func() {
+		assert.Nil(client.DeleteQueue(utCtx, sourceName))
+	}()
+
+	dest, err := client.GetQueueHandle(utCtx, destName)
+	assert.Nil(err)
+	defer func() {
+		assert.Nil(client.DeleteQueue(utCtx, destName))
+	}()
+
+	// verifyPayload helper to assert a popped/peaked message carries the expected payload
+	verifyPayload := func(msg redis.QueueMessageEnvelope, expected string) {
+		assert.NotNil(msg)
+		if msg == nil {
+			return
+		}
+		payload, err := msg.StringPayload()
+		assert.Nil(err)
+		assert.Equal(expected, payload)
+	}
+
+	// Stage 5 distinct messages on the source, mimicking a reader that has several in-flight
+	// messages buffered at once. Source is now [m0, m1, m2, m3, m4] left to right.
+	entries := make([]testIPCMessage, 5)
+	for i := range entries {
+		entries[i] = testIPCMessage{payload: uuid.NewString()}
+		_, err := source.PushRight(utCtx, entries[i], nil)
+		assert.Nil(err)
+	}
+
+	// Case 0: move a message from the middle of the source (m2) onto the left of the dest,
+	// even though it is neither the head nor the tail. Dest is now [m2].
+	{
+		err := source.RemoveAndMove(utCtx, destName, entries[2], true)
+		assert.Nil(err)
+
+		length, err := source.Length(utCtx)
+		assert.Nil(err)
+		assert.Equal(uint64(4), length)
+
+		left, err := dest.PeakLeft(utCtx)
+		assert.Nil(err)
+		verifyPayload(left, entries[2].payload)
+	}
+
+	// Case 1: move the current source head (m0) onto the left of the dest. Dest is now
+	// [m0, m2] left to right.
+	{
+		err := source.RemoveAndMove(utCtx, destName, entries[0], true)
+		assert.Nil(err)
+
+		left, err := dest.PeakLeft(utCtx)
+		assert.Nil(err)
+		verifyPayload(left, entries[0].payload)
+	}
+
+	// Case 2: move the current source tail (m4) onto the right of the dest. Dest is now
+	// [m0, m2, m4] left to right.
+	{
+		err := source.RemoveAndMove(utCtx, destName, entries[4], false)
+		assert.Nil(err)
+
+		right, err := dest.PeakRight(utCtx)
+		assert.Nil(err)
+		verifyPayload(right, entries[4].payload)
+	}
+
+	// The source retains only the messages that were never moved: [m1, m3] left to right.
+	{
+		length, err := source.Length(utCtx)
+		assert.Nil(err)
+		assert.Equal(uint64(2), length)
+		for _, expected := range []testIPCMessage{entries[1], entries[3]} {
+			msg, err := source.PopLeft(utCtx, false, nil)
+			assert.Nil(err)
+			verifyPayload(msg, expected.payload)
+		}
+	}
+
+	// Case 3: moving a message that is not present in the source must fail and must not push
+	// anything onto the destination, so a caller can never fabricate a message.
+	{
+		destLenBefore, err := dest.Length(utCtx)
+		assert.Nil(err)
+
+		err = source.RemoveAndMove(utCtx, destName, testIPCMessage{payload: uuid.NewString()}, true)
+		assert.Error(err)
+
+		destLenAfter, err := dest.Length(utCtx)
+		assert.Nil(err)
+		assert.Equal(destLenBefore, destLenAfter)
+	}
+}
+
 func TestRedisQueueBlockingPopAndMove(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)
@@ -646,7 +755,7 @@ func TestRedisQueueRemoveCornerCases(t *testing.T) {
 	}
 
 	// Case 0: removing a message that is not in the queue. The queue is left unchanged, and
-	// `Remove` reports an error since nothing was deleted.
+	// `Remove` treats "nothing deleted" as a no-op success (no error).
 	{
 		testQueue := uuid.NewString()
 		uut, err := client.GetQueueHandle(utCtx, testQueue)
@@ -663,9 +772,9 @@ func TestRedisQueueRemoveCornerCases(t *testing.T) {
 			assert.Nil(err)
 		}
 
-		// Remove a message that was never inserted. Nothing is deleted, so `Remove` errors.
+		// Remove a message that was never inserted. Nothing is deleted, but `Remove` succeeds.
 		err = uut.Remove(utCtx, testIPCMessage{payload: uuid.NewString()})
-		assert.Error(err)
+		assert.Nil(err)
 
 		// The queue length is unchanged
 		length, err := uut.Length(utCtx)

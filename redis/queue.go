@@ -51,6 +51,34 @@ end
 return len`,
 )
 
+// removeAndMoveScript atomically remove a single occurrence of a specific message from the
+// source queue and, only if it was actually present, push it onto the destination queue.
+//
+// Unlike the position-based *AndMove operations, this targets a message by value, so it is
+// safe to use when the source queue holds several unrelated messages (e.g. a reader that has
+// staged multiple in-flight messages in its buffer queue). Bundling the LREM and the push in
+// one script guarantees the message can never be lost from both queues, nor duplicated onto
+// the destination, if the caller crashes mid-operation.
+//
+// The removal count is returned so the caller can tell "moved" (1) from "message was not in
+// the source queue" (0); on 0 nothing is pushed, so a caller can never fabricate a message
+// that did not originate from the source queue.
+//
+// NOTE: KEYS[1] and KEYS[2] must live on the same Redis node. On a single-node deployment
+// (as used here) this always holds; on Redis Cluster the two queues would need a shared hash
+// tag to be co-located.
+var removeAndMoveScript = redis.NewScript(
+	`-- KEYS[1]=source, KEYS[2]=destination ; ARGV[1]=payload, ARGV[2]=dest_on_left (1=LPUSH)
+local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+if removed == 0 then return 0 end
+if tonumber(ARGV[2]) == 1 then
+  redis.call('LPUSH', KEYS[2], ARGV[1])
+else
+  redis.call('RPUSH', KEYS[2], ARGV[1])
+end
+return removed`,
+)
+
 // queueMessage REDIS queue message are all represented as strings
 type queueMessage string
 
@@ -151,6 +179,30 @@ type Queue interface {
 		blocking bool,
 		maxWait *time.Duration,
 	) (QueueMessageEnvelope, error)
+
+	/*
+		RemoveAndMove atomically remove a single occurrence of a specific message from this
+		queue and, only if it was present, push it onto the destination queue.
+
+		Unlike PopLeftAndMove / PopRightAndMove, the message is targeted by value rather than
+		by position, so this is safe to use when this queue holds several unrelated messages.
+		The remove and push happen in one atomic step, so the message can never be lost from
+		both queues nor duplicated onto the destination if the caller crashes mid-operation.
+
+		If the message is not present in this queue nothing is moved and an error is returned;
+		this prevents a caller from injecting a message that did not originate from this queue.
+
+			@param ctx context.Context - execution context
+			@param destination string - destination queue
+			@param message QueueMessageEnvelope - the specific message to move
+			@param insertOnLeft bool - whether to insert on left of destination queue. Default is right.
+	*/
+	RemoveAndMove(
+		ctx context.Context,
+		destination string,
+		message QueueMessageEnvelope,
+		insertOnLeft bool,
+	) error
 
 	/*
 		PeakLeft read the left most value of the queue without removing it
@@ -507,6 +559,60 @@ func (q *redisQueueImpl) PopRightAndMove(
 }
 
 /*
+RemoveAndMove atomically remove a single occurrence of a specific message from this queue
+and, only if it was present, push it onto the destination queue.
+
+Unlike PopLeftAndMove / PopRightAndMove, the message is targeted by value rather than by
+position, so this is safe to use when this queue holds several unrelated messages. The remove
+and push happen in one atomic LUA step, so the message can never be lost from both queues nor
+duplicated onto the destination if the caller crashes mid-operation.
+
+If the message is not present in this queue nothing is moved and an error is returned; this
+prevents a caller from injecting a message that did not originate from this queue.
+
+	@param ctx context.Context - execution context
+	@param destination string - destination queue
+	@param message QueueMessageEnvelope - the specific message to move
+	@param insertOnLeft bool - whether to insert on left of destination queue. Default is right.
+*/
+func (q *redisQueueImpl) RemoveAndMove(
+	ctx context.Context,
+	destination string,
+	message QueueMessageEnvelope,
+	insertOnLeft bool,
+) error {
+	payload, err := message.StringPayload()
+	if err != nil {
+		return goutils.NewBadInputError("queue message failed to serialize", err, true)
+	}
+
+	destOnLeft := 0
+	if insertOnLeft {
+		destOnLeft = 1
+	}
+
+	removed, err := removeAndMoveScript.Run(
+		ctx, q.core, []string{q.queueName, destination}, payload, destOnLeft,
+	).Int64()
+	if err != nil {
+		return goutils.NewRedisError(
+			"failed to remove-move queue "+q.queueName+" to queue "+destination, err, true,
+		)
+	}
+
+	if removed == 0 {
+		return goutils.NewConsistencyError(
+			"message '"+payload+"' not present in queue "+q.queueName+"; nothing moved to "+
+				destination,
+			nil,
+			true,
+		)
+	}
+
+	return nil
+}
+
+/*
 PeakLeft read the left most value of the queue without removing it
 
 	@param ctx context.Context - execution context
@@ -608,12 +714,9 @@ func (q *redisQueueImpl) Remove(ctx context.Context, message QueueMessageEnvelop
 			"failed to delete from queue "+q.queueName, resp.Err(), true,
 		)
 	}
-	deleted := resp.Val()
-	if deleted <= 0 {
-		return goutils.NewConsistencyError(
-			"failed to delete message '"+toDelete+"' from queue "+q.queueName, nil, true,
-		)
-	}
+	// A message that is not present is treated as a no-op success: removing something that is
+	// already gone leaves the queue in the intended state, and callers (e.g. an at-most-once
+	// ack) must not see a spurious error when the message was already handled or expired.
 
 	return nil
 }

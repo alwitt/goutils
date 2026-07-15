@@ -787,3 +787,72 @@ func (_c *Queue_Remove_Call) RunAndReturn(run func(ctx context.Context, message 
 	_c.Call.Return(run)
 	return _c
 }
+
+// RemoveAndMove provides a mock function for the type Queue
+func (_mock *Queue) RemoveAndMove(ctx context.Context, destination string, message redis.QueueMessageEnvelope, insertOnLeft bool) error {
+	ret := _mock.Called(ctx, destination, message, insertOnLeft)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveAndMove")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, redis.QueueMessageEnvelope, bool) error); ok {
+		r0 = returnFunc(ctx, destination, message, insertOnLeft)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Queue_RemoveAndMove_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveAndMove'
+type Queue_RemoveAndMove_Call struct {
+	*mock.Call
+}
+
+// RemoveAndMove is a helper method to define mock.On call
+//   - ctx context.Context
+//   - destination string
+//   - message redis.QueueMessageEnvelope
+//   - insertOnLeft bool
+func (_e *Queue_Expecter) RemoveAndMove(ctx interface{}, destination interface{}, message interface{}, insertOnLeft interface{}) *Queue_RemoveAndMove_Call {
+	return &Queue_RemoveAndMove_Call{Call: _e.mock.On("RemoveAndMove", ctx, destination, message, insertOnLeft)}
+}
+
+func (_c *Queue_RemoveAndMove_Call) Run(run func(ctx context.Context, destination string, message redis.QueueMessageEnvelope, insertOnLeft bool)) *Queue_RemoveAndMove_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 redis.QueueMessageEnvelope
+		if args[2] != nil {
+			arg2 = args[2].(redis.QueueMessageEnvelope)
+		}
+		var arg3 bool
+		if args[3] != nil {
+			arg3 = args[3].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *Queue_RemoveAndMove_Call) Return(err error) *Queue_RemoveAndMove_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Queue_RemoveAndMove_Call) RunAndReturn(run func(ctx context.Context, destination string, message redis.QueueMessageEnvelope, insertOnLeft bool) error) *Queue_RemoveAndMove_Call {
+	_c.Call.Return(run)
+	return _c
+}
