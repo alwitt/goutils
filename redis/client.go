@@ -61,6 +61,27 @@ type Client interface {
 			@returns `REDISError` in case of failure
 	*/
 	DeleteQueue(ctx context.Context, queueName string) error
+
+	/*
+		Publish a message a onto a REDIS PubSub topic
+
+			@param ctx context.Context - execution context
+			@param topic string - topic to publish on
+			@param msg QueueMessageEnvelope - the message to publish
+			@returns `BadInputError` in case message is not serializing
+			@returns `REDISError` in case of failure
+	*/
+	Publish(ctx context.Context, msg PubSubMessage) error
+
+	/*
+		Subscribe for messages on a set of REDIS PubSub topics
+
+			@param ctx context.Context - execution context
+			@param subName string - subscriber name
+			@param topics []string - the PubSub topics to subscribe on
+			@return the subscription runner
+	*/
+	Subscribe(ctx context.Context, subName string, topics []string) (Subscriber, error)
 }
 
 type clientImpl struct {
@@ -177,7 +198,7 @@ func (c *clientImpl) GetQueueHandle(
 	_ context.Context, queueName string,
 ) (Queue, error) {
 	logTags := log.Fields{
-		"module":    "kv",
+		"module":    "redis",
 		"component": "redis-client",
 		"server":    c.serverAddress,
 		"queue":     queueName,

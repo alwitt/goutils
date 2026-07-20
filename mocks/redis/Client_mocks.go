@@ -293,3 +293,134 @@ func (_c *Client_GetRingBuffer_Call) RunAndReturn(run func(ctx context.Context, 
 	_c.Call.Return(run)
 	return _c
 }
+
+// Publish provides a mock function for the type Client
+func (_mock *Client) Publish(ctx context.Context, msg redis.PubSubMessage) error {
+	ret := _mock.Called(ctx, msg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Publish")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, redis.PubSubMessage) error); ok {
+		r0 = returnFunc(ctx, msg)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Client_Publish_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Publish'
+type Client_Publish_Call struct {
+	*mock.Call
+}
+
+// Publish is a helper method to define mock.On call
+//   - ctx context.Context
+//   - msg redis.PubSubMessage
+func (_e *Client_Expecter) Publish(ctx interface{}, msg interface{}) *Client_Publish_Call {
+	return &Client_Publish_Call{Call: _e.mock.On("Publish", ctx, msg)}
+}
+
+func (_c *Client_Publish_Call) Run(run func(ctx context.Context, msg redis.PubSubMessage)) *Client_Publish_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 redis.PubSubMessage
+		if args[1] != nil {
+			arg1 = args[1].(redis.PubSubMessage)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *Client_Publish_Call) Return(err error) *Client_Publish_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Client_Publish_Call) RunAndReturn(run func(ctx context.Context, msg redis.PubSubMessage) error) *Client_Publish_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Subscribe provides a mock function for the type Client
+func (_mock *Client) Subscribe(ctx context.Context, subName string, topics []string) (redis.Subscriber, error) {
+	ret := _mock.Called(ctx, subName, topics)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Subscribe")
+	}
+
+	var r0 redis.Subscriber
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) (redis.Subscriber, error)); ok {
+		return returnFunc(ctx, subName, topics)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) redis.Subscriber); ok {
+		r0 = returnFunc(ctx, subName, topics)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(redis.Subscriber)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
+		r1 = returnFunc(ctx, subName, topics)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// Client_Subscribe_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Subscribe'
+type Client_Subscribe_Call struct {
+	*mock.Call
+}
+
+// Subscribe is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subName string
+//   - topics []string
+func (_e *Client_Expecter) Subscribe(ctx interface{}, subName interface{}, topics interface{}) *Client_Subscribe_Call {
+	return &Client_Subscribe_Call{Call: _e.mock.On("Subscribe", ctx, subName, topics)}
+}
+
+func (_c *Client_Subscribe_Call) Run(run func(ctx context.Context, subName string, topics []string)) *Client_Subscribe_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *Client_Subscribe_Call) Return(subscriber redis.Subscriber, err error) *Client_Subscribe_Call {
+	_c.Call.Return(subscriber, err)
+	return _c
+}
+
+func (_c *Client_Subscribe_Call) RunAndReturn(run func(ctx context.Context, subName string, topics []string) (redis.Subscriber, error)) *Client_Subscribe_Call {
+	_c.Call.Return(run)
+	return _c
+}
