@@ -168,6 +168,92 @@ func TestRedisPubSubMultipleTopics(t *testing.T) {
 	}
 }
 
+func TestRedisPubSubGlobPatterns(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	redisConnect := getRedisConnectParamForTest(assert)
+	client, err := redis.NewClient(utCtx, redisConnect)
+	assert.Nil(err)
+
+	// A single subscriber listening on two glob patterns (PSUBSCRIBE). A namespace unique to
+	// this run keeps the patterns from colliding with other tests sharing the Redis instance.
+	ns := uuid.NewString()
+	patternA := ns + ":subject:task:*" // matches any task-subject channel under this namespace
+	patternB := ns + ":type:*"         // matches any type channel under this namespace
+
+	uut, err := client.Subscribe(utCtx, uuid.NewString(), []string{patternA, patternB})
+	assert.Nil(err)
+
+	// Concrete channels the patterns should match, plus one that matches neither.
+	chanTaskA := ns + ":subject:task:" + uuid.NewString() // matches patternA
+	chanTaskB := ns + ":subject:task:" + uuid.NewString() // matches patternA
+	chanType := ns + ":type:TASK_TERMINATED"              // matches patternB
+	chanUnmatched := ns + ":subject:workflow:" + uuid.NewString()
+
+	// Delivery order across channels is not guaranteed, so collect into a channel->payload map.
+	// The subscriber sees the CONCRETE matched channel (pmessage carries it), not the pattern.
+	collector := mocktest.NewUnitTestCallbackCollector(t)
+	var lock sync.Mutex
+	byChannel := map[string]string{}
+	gotOne := make(chan struct{}, 4)
+	collector.EXPECT().
+		CollectRedisSubscribeMsgs(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, msg redis.PubSubMessage) {
+			payload, err := msg.Message.StringPayload()
+			assert.Nil(err)
+			lock.Lock()
+			byChannel[msg.Topic] = payload
+			lock.Unlock()
+			gotOne <- struct{}{}
+		}).
+		Return()
+
+	assert.Nil(uut.Start(utCtx, collector.CollectRedisSubscribeMsgs))
+	defer func() {
+		assert.Nil(uut.Stop(utCtx))
+	}()
+
+	time.Sleep(subReady)
+
+	msgTaskA := testPubSubMessage{payload: uuid.NewString()}
+	msgTaskB := testPubSubMessage{payload: uuid.NewString()}
+	msgType := testPubSubMessage{payload: uuid.NewString()}
+	msgUnmatched := testPubSubMessage{payload: uuid.NewString()}
+
+	// Publish to three matching concrete channels and one that matches neither pattern.
+	assert.Nil(client.Publish(utCtx, redis.PubSubMessage{Topic: chanTaskA, Message: msgTaskA}))
+	assert.Nil(client.Publish(utCtx, redis.PubSubMessage{Topic: chanTaskB, Message: msgTaskB}))
+	assert.Nil(client.Publish(utCtx, redis.PubSubMessage{Topic: chanType, Message: msgType}))
+	assert.Nil(client.Publish(utCtx, redis.PubSubMessage{Topic: chanUnmatched, Message: msgUnmatched}))
+
+	// The handler is invoked exactly for the three messages on pattern-matched channels.
+	for i := 0; i < 3; i++ {
+		select {
+		case <-gotOne:
+		case <-time.After(time.Second * 2):
+			assert.Fail("timed out waiting for a pattern-matched message")
+		}
+	}
+
+	// Each matched message is delivered under its concrete channel name (not the pattern).
+	lock.Lock()
+	assert.Equal(msgTaskA.payload, byChannel[chanTaskA])
+	assert.Equal(msgTaskB.payload, byChannel[chanTaskB])
+	assert.Equal(msgType.payload, byChannel[chanType])
+	lock.Unlock()
+
+	// The message on the un-matched channel must never be delivered.
+	select {
+	case <-gotOne:
+		assert.Fail("received message on a channel matching no subscribed pattern")
+	case <-time.After(time.Millisecond * 200):
+		// expected: nothing else delivered
+	}
+}
+
 func TestRedisPubSubFanOut(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)

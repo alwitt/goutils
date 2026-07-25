@@ -172,7 +172,7 @@ func (s *subscriberImpl) Start(parentCtx context.Context, handler PubSubMessageH
 		defer log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Info("Stop processing messages")
 
 		// Start the subscription
-		subscription := s.core.Subscribe(s.workingCtx, s.topics...)
+		subscription := s.core.PSubscribe(s.workingCtx, s.topics...)
 		defer func() {
 			if err := subscription.Close(); err != nil {
 				log.
