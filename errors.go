@@ -266,21 +266,6 @@ func (e UnexpectedTypeError) Error() string {
 }
 
 // ======================================================================================
-// REDIS Errors
-
-// RedisError wraps an error returned by REDIS client
-type RedisError struct{ BaseError }
-
-// NewRedisError builds a RedisError, optionally capturing the call stack.
-func NewRedisError(message string, core error, getCallStack bool) RedisError {
-	base := BaseError{Name: "RedisError", Message: message, Core: core}
-	if getCallStack {
-		base.Stack = GetCallStack(1)
-	}
-	return RedisError{BaseError: base}
-}
-
-// ======================================================================================
 // Docker Errors
 
 // DockerError docker session driver specific error
@@ -296,7 +281,37 @@ func NewDockerError(message string, core error, getCallStack bool) DockerError {
 }
 
 // ======================================================================================
-// Object Store Errors
+// Persistence Layer Errors
+
+// PersistenceError encountered when operating the persistence layer
+type PersistenceError struct{ BaseError }
+
+// NewPersistenceError builds a PersistenceError, optionally capturing the call stack.
+func NewPersistenceError(message string, core error, getCallStack bool) PersistenceError {
+	base := BaseError{Name: "PersistenceError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = GetCallStack(1)
+	}
+	return PersistenceError{BaseError: base}
+}
+
+// ======================================================================================
+// Persistence Layer Errors - REDIS
+
+// RedisError wraps an error returned by REDIS client
+type RedisError struct{ BaseError }
+
+// NewRedisError builds a RedisError, optionally capturing the call stack.
+func NewRedisError(message string, core error, getCallStack bool) RedisError {
+	base := BaseError{Name: "RedisError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = GetCallStack(1)
+	}
+	return RedisError{BaseError: base}
+}
+
+// ======================================================================================
+// Persistence Layer Errors - Object Store
 
 // ObjectStoreError error encountered with the object store
 type ObjectStoreError struct{ BaseError }
@@ -308,4 +323,19 @@ func NewObjectStoreError(message string, core error, getCallStack bool) ObjectSt
 		base.Stack = GetCallStack(1)
 	}
 	return ObjectStoreError{BaseError: base}
+}
+
+// ======================================================================================
+// Persistence Layer Errors - SQL
+
+// SQLError wraps an error returned by the GORM layer, indicating a SQL statement failed
+type SQLError struct{ BaseError }
+
+// NewSQLError builds a SQLError, optionally capturing the call stack.
+func NewSQLError(message string, core error, getCallStack bool) SQLError {
+	base := BaseError{Name: "SQLError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = GetCallStack(1)
+	}
+	return SQLError{BaseError: base}
 }
