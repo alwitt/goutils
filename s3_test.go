@@ -247,8 +247,16 @@ func TestS3ClientUsePresignedURL(t *testing.T) {
 	assert.Nil(err)
 	checksumB64 := base64.StdEncoding.EncodeToString(hashCompute.Sum(nil))
 
+	// Sign a specific Content-Type into the PUT URL so the object is stored with it.
+	putContentType := "text/plain"
 	putURL, err := uut.GeneratePresignedPutURL(
-		utCtx, testBucket, testObject, int64(len(testContent)), checksumB64, time.Minute*5,
+		utCtx,
+		testBucket,
+		testObject,
+		int64(len(testContent)),
+		checksumB64,
+		time.Minute*5,
+		&putContentType,
 	)
 	assert.Nil(err)
 	assert.NotNil(putURL)
@@ -257,7 +265,7 @@ func TestS3ClientUsePresignedURL(t *testing.T) {
 
 	restyClient := resty.New()
 	resp, err := restyClient.R().
-		SetHeader("Content-Type", "application/octet-stream").
+		SetHeader("Content-Type", putContentType).
 		SetHeader("x-amz-checksum-sha256", checksumB64).
 		SetBody([]byte(testContent)).
 		Put(putURL.String())
@@ -266,8 +274,18 @@ func TestS3ClientUsePresignedURL(t *testing.T) {
 	assert.Equal(200, resp.StatusCode(), respBody)
 	log.Debugf("PUT URL Resp:\n%s", respBody)
 
+	// The signed Content-Type must have been stored with the object.
+	putStat, err := uut.GetObjectStat(utCtx, testBucket, testObject)
+	assert.Nil(err)
+	assert.Equal(putContentType, putStat.MIMEType)
+
 	// ---- generate presigned GET URL and verify content ----
-	getURL, err := uut.GeneratePresignedGetURL(utCtx, testBucket, testObject, time.Minute*5)
+	// Request that the store return a Content-Disposition of "attachment" so the URL
+	// forces a download rather than inline rendering.
+	contentDisposition := "attachment; filename=\"presigned-test.txt\""
+	getURL, err := uut.GeneratePresignedGetURL(
+		utCtx, testBucket, testObject, time.Minute*5, &contentDisposition,
+	)
 	assert.Nil(err)
 	assert.NotNil(getURL)
 
@@ -277,6 +295,8 @@ func TestS3ClientUsePresignedURL(t *testing.T) {
 	assert.Nil(err)
 	assert.Equal(200, resp.StatusCode(), string(resp.Body()))
 	assert.Equal(testContent, string(resp.Body()))
+	// The store should echo back the requested Content-Disposition.
+	assert.Equal(contentDisposition, resp.Header().Get("Content-Disposition"))
 
 	// ---- cleanup ----
 	assert.Nil(uut.DeleteObject(utCtx, testBucket, testObject))
@@ -322,8 +342,15 @@ func TestS3ClientGetObjectStat(t *testing.T) {
 	checksumB64 := base64.StdEncoding.EncodeToString(hashCompute.Sum(nil))
 
 	// --- upload using presigned PUT URL with checksum and content-type ----
+	jpegMIME := "image/jpeg"
 	putURL, err := cli.GeneratePresignedPutURL(
-		ctx, bucket, objectKey, int64(len(objectContent)), checksumB64, time.Minute*5,
+		ctx,
+		bucket,
+		objectKey,
+		int64(len(objectContent)),
+		checksumB64,
+		time.Minute*5,
+		&jpegMIME,
 	)
 	assert.Nil(err)
 	assert.NotNil(putURL)
@@ -333,7 +360,7 @@ func TestS3ClientGetObjectStat(t *testing.T) {
 	// Create a REST client for the upload
 	restyClient := resty.New()
 	resp, err := restyClient.R().
-		SetHeader("Content-Type", "image/jpeg").
+		SetHeader("Content-Type", jpegMIME).
 		SetHeader("x-amz-checksum-sha256", checksumB64).
 		SetContentLength(true).
 		SetBody(objectContent).
@@ -350,6 +377,7 @@ func TestS3ClientGetObjectStat(t *testing.T) {
 	assert.Equal(expectedSize, fileSize)
 	assert.Equal(expectedSize, stat.Size, "size mismatch")
 	assert.Equal(checksumB64, stat.CheckSum, "checksum mismatch")
+	assert.Equal(jpegMIME, stat.MIMEType, "content-type mismatch")
 	log.Debugf("Stored checksum: %s", stat.CheckSum)
 	log.Debugf("Computed checksum (hex): %s", checksum)
 	log.Debugf("Computed checksum (base64): %s", checksumB64)
@@ -389,13 +417,13 @@ func TestS3ClientCopyObject(t *testing.T) {
 	checksumB64 := base64.StdEncoding.EncodeToString(hashCompute.Sum(nil))
 
 	// --- upload via presigned PUT URL ---------------------------------------
-	// Content-Type is intentionally not set: GeneratePresignedPutURL only signs
-	// the host header, so MinIO ignores any unsigned Content-Type sent during
-	// the upload. In production the staging upload's MIME type is irrelevant —
-	// the ingestion task detects the real type from the object's magic bytes
-	// and rewrites it via CopyObject.
+	// Content-Type is intentionally left nil here: this models the production
+	// staging flow where the upload's MIME type is unknown/irrelevant — the
+	// ingestion task detects the real type from the object's magic bytes and
+	// rewrites it via CopyObject. (GeneratePresignedPutURL can sign a
+	// Content-Type; that path is covered by the other presign tests.)
 	putURL, err := cli.GeneratePresignedPutURL(
-		ctx, bucket, srcKey, int64(len(objectContent)), checksumB64, time.Minute*5,
+		ctx, bucket, srcKey, int64(len(objectContent)), checksumB64, time.Minute*5, nil,
 	)
 	assert.Nil(err)
 	assert.NotNil(putURL)
@@ -422,7 +450,7 @@ func TestS3ClientCopyObject(t *testing.T) {
 
 	// --- verification -------------------------------------------------------
 	fetch := func(key string) *resty.Response {
-		getURL, err := cli.GeneratePresignedGetURL(ctx, bucket, key, time.Minute*5)
+		getURL, err := cli.GeneratePresignedGetURL(ctx, bucket, key, time.Minute*5, nil)
 		assert.Nil(err)
 		assert.NotNil(getURL)
 
@@ -478,37 +506,47 @@ func TestS3ClientPresignedURLValidation(t *testing.T) {
 
 	// ---- GeneratePresignedGetURL ----
 	{
-		url, err := uut.GeneratePresignedGetURL(utCtx, bucket, objectKey, 0)
+		url, err := uut.GeneratePresignedGetURL(utCtx, bucket, objectKey, 0, nil)
 		assertBadInput(url, err)
 	}
 	{
-		url, err := uut.GeneratePresignedGetURL(utCtx, bucket, objectKey, overMaxTTL)
+		url, err := uut.GeneratePresignedGetURL(utCtx, bucket, objectKey, overMaxTTL, nil)
 		assertBadInput(url, err)
 	}
 
 	// ---- GeneratePresignedPutURL ----
 	// TTL guards
 	{
-		url, err := uut.GeneratePresignedPutURL(utCtx, bucket, objectKey, 1, validSum, -time.Second)
+		url, err := uut.GeneratePresignedPutURL(
+			utCtx, bucket, objectKey, 1, validSum, -time.Second, nil,
+		)
 		assertBadInput(url, err)
 	}
 	{
-		url, err := uut.GeneratePresignedPutURL(utCtx, bucket, objectKey, 1, validSum, overMaxTTL)
+		url, err := uut.GeneratePresignedPutURL(
+			utCtx, bucket, objectKey, 1, validSum, overMaxTTL, nil,
+		)
 		assertBadInput(url, err)
 	}
 	// Negative object size
 	{
-		url, err := uut.GeneratePresignedPutURL(utCtx, bucket, objectKey, -1, validSum, time.Minute)
+		url, err := uut.GeneratePresignedPutURL(
+			utCtx, bucket, objectKey, -1, validSum, time.Minute, nil,
+		)
 		assertBadInput(url, err)
 	}
 	// Empty checksum
 	{
-		url, err := uut.GeneratePresignedPutURL(utCtx, bucket, objectKey, 1, "", time.Minute)
+		url, err := uut.GeneratePresignedPutURL(
+			utCtx, bucket, objectKey, 1, "", time.Minute, nil,
+		)
 		assertBadInput(url, err)
 	}
 	// Non-base64 checksum
 	{
-		url, err := uut.GeneratePresignedPutURL(utCtx, bucket, objectKey, 1, "not!base64!", time.Minute)
+		url, err := uut.GeneratePresignedPutURL(
+			utCtx, bucket, objectKey, 1, "not!base64!", time.Minute, nil,
+		)
 		assertBadInput(url, err)
 	}
 }
@@ -643,7 +681,7 @@ func TestS3ClientCopyObjectCrossBucket(t *testing.T) {
 	checksumB64 := base64.StdEncoding.EncodeToString(hashCompute.Sum(nil))
 
 	putURL, err := cli.GeneratePresignedPutURL(
-		ctx, srcBucket, srcKey, int64(len(objectContent)), checksumB64, time.Minute*5,
+		ctx, srcBucket, srcKey, int64(len(objectContent)), checksumB64, time.Minute*5, nil,
 	)
 	assert.Nil(err)
 	assert.NotNil(putURL)
@@ -663,7 +701,7 @@ func TestS3ClientCopyObjectCrossBucket(t *testing.T) {
 	assert.Nil(cli.CopyObject(ctx, srcBucket, srcKey, dstBucket, dstKey, &pngMIME))
 
 	// --- verification: content retrievable from dst bucket, MIME overridden --
-	getURL, err := cli.GeneratePresignedGetURL(ctx, dstBucket, dstKey, time.Minute*5)
+	getURL, err := cli.GeneratePresignedGetURL(ctx, dstBucket, dstKey, time.Minute*5, nil)
 	assert.Nil(err)
 	assert.NotNil(getURL)
 

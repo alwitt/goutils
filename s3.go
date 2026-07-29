@@ -229,14 +229,27 @@ type S3Client interface {
 		GeneratePresignedGetURL generate presigned GET URL from S3 server for a particular
 		bucket and object key.
 
+		When contentDisposition is set, the URL is signed so that the object store
+		returns a `Content-Disposition` response header with that exact value (via the
+		`response-content-disposition` override). This lets the caller force a download
+		("attachment", or `attachment; filename="report.pdf"`) or force inline rendering
+		("inline") regardless of how the object was stored. The value must be a valid
+		`Content-Disposition` header value.
+
 			@param ctx context.Context - execution context
 			@param bucketName string - target bucket name
 			@param objectKey string - target object key
 			@param ttl time.Duration - TTL for the pre-signed URL
+			@param contentDisposition *string - if set, the Content-Disposition the URL
+			       forces the object store to return (e.g. "attachment").
 			@returns presigned URL
 	*/
 	GeneratePresignedGetURL(
-		ctx context.Context, bucketName string, objectKey string, ttl time.Duration,
+		ctx context.Context,
+		bucketName string,
+		objectKey string,
+		ttl time.Duration,
+		contentDisposition *string,
 	) (*url.URL, error)
 
 	/*
@@ -248,12 +261,20 @@ type S3Client interface {
 		using this URL must send both headers with these exact values, or the object store
 		will reject the request with a signature or checksum error.
 
+		When contentType is set, the `Content-Type` header is signed into the URL too, so
+		the HTTP client must additionally send a `Content-Type` header with that exact
+		value. This fixes the stored object's MIME type at upload time; when it is nil the
+		object store falls back to whatever `Content-Type` the client sends (defaulting to
+		"application/octet-stream").
+
 			@param ctx context.Context - execution context
 			@param bucketName string - target bucket name
 			@param objectKey string - target object key
 			@param objectSize int64 - exact size in bytes of the object the caller will upload
 			@param sha256Sum string - base64-encoded SHA-256 of the object content
 			@param ttl time.Duration - TTL for the pre-signed URL
+			@param contentType *string - if set, the Content-Type signed into the URL that
+			       the client must send and which the object is stored with.
 			@returns presigned URL
 	*/
 	GeneratePresignedPutURL(
@@ -263,6 +284,7 @@ type S3Client interface {
 		objectSize int64,
 		sha256Sum string,
 		ttl time.Duration,
+		contentType *string,
 	) (*url.URL, error)
 }
 
@@ -664,15 +686,29 @@ bucket and object key.
 	@param bucketName string - target bucket name
 	@param objectKey string - target object key
 	@param ttl time.Duration - TTL for the pre-signed URL (must be > 0 and <= 7 days)
+	@param contentDisposition *string - if set, the Content-Disposition the URL forces
+	       the object store to return (e.g. "attachment").
 	@returns presigned URL
 */
 func (s *s3ClientImpl) GeneratePresignedGetURL(
-	ctx context.Context, bucketName string, objectKey string, ttl time.Duration,
+	ctx context.Context,
+	bucketName string,
+	objectKey string,
+	ttl time.Duration,
+	contentDisposition *string,
 ) (*url.URL, error) {
 	if err := validatePresignTTL(ttl); err != nil {
 		return nil, err
 	}
-	getURL, err := s.s3.PresignedGetObject(ctx, bucketName, objectKey, ttl, nil)
+	// Override the object store's response headers when requested. Setting
+	// response-content-disposition makes the store echo the value back as the
+	// Content-Disposition header when the URL is fetched.
+	var reqParams url.Values
+	if contentDisposition != nil {
+		reqParams = url.Values{}
+		reqParams.Set("response-content-disposition", *contentDisposition)
+	}
+	getURL, err := s.s3.PresignedGetObject(ctx, bucketName, objectKey, ttl, reqParams)
 	if err != nil {
 		return nil, NewObjectStoreError(
 			fmt.Sprintf(
@@ -698,6 +734,8 @@ will reject the request with a signature or checksum error.
 	@param objectSize int64 - exact size in bytes of the object the caller will upload
 	@param sha256Sum string - base64-encoded SHA-256 of the object content
 	@param ttl time.Duration - TTL for the pre-signed URL (must be > 0 and <= 7 days)
+	@param contentType *string - if set, the Content-Type signed into the URL that the
+	       client must send and which the object is stored with.
 	@returns presigned URL
 */
 func (s *s3ClientImpl) GeneratePresignedPutURL(
@@ -707,6 +745,7 @@ func (s *s3ClientImpl) GeneratePresignedPutURL(
 	objectSize int64,
 	sha256Sum string,
 	ttl time.Duration,
+	contentType *string,
 ) (*url.URL, error) {
 	if objectSize < 0 {
 		return nil, NewBadInputError(
@@ -747,6 +786,11 @@ func (s *s3ClientImpl) GeneratePresignedPutURL(
 	signedHeaders := http.Header{}
 	signedHeaders.Set("Content-Length", strconv.FormatInt(objectSize, 10))
 	signedHeaders.Set("x-amz-checksum-sha256", sha256Sum)
+	// Signing Content-Type binds the stored object's MIME type; the uploading
+	// client must then send this exact Content-Type for the signature to match.
+	if contentType != nil {
+		signedHeaders.Set("Content-Type", *contentType)
+	}
 
 	putURL, err := s.s3.PresignHeader(
 		ctx, http.MethodPut, bucketName, objectKey, ttl, url.Values{}, signedHeaders,

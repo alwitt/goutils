@@ -374,8 +374,8 @@ func (_c *S3Client_DeleteObjects_Call) RunAndReturn(run func(ctx context.Context
 }
 
 // GeneratePresignedGetURL provides a mock function for the type S3Client
-func (_mock *S3Client) GeneratePresignedGetURL(ctx context.Context, bucketName string, objectKey string, ttl time.Duration) (*url.URL, error) {
-	ret := _mock.Called(ctx, bucketName, objectKey, ttl)
+func (_mock *S3Client) GeneratePresignedGetURL(ctx context.Context, bucketName string, objectKey string, ttl time.Duration, contentDisposition *string) (*url.URL, error) {
+	ret := _mock.Called(ctx, bucketName, objectKey, ttl, contentDisposition)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GeneratePresignedGetURL")
@@ -383,18 +383,18 @@ func (_mock *S3Client) GeneratePresignedGetURL(ctx context.Context, bucketName s
 
 	var r0 *url.URL
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, time.Duration) (*url.URL, error)); ok {
-		return returnFunc(ctx, bucketName, objectKey, ttl)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, time.Duration, *string) (*url.URL, error)); ok {
+		return returnFunc(ctx, bucketName, objectKey, ttl, contentDisposition)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, time.Duration) *url.URL); ok {
-		r0 = returnFunc(ctx, bucketName, objectKey, ttl)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, time.Duration, *string) *url.URL); ok {
+		r0 = returnFunc(ctx, bucketName, objectKey, ttl, contentDisposition)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*url.URL)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, time.Duration) error); ok {
-		r1 = returnFunc(ctx, bucketName, objectKey, ttl)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, time.Duration, *string) error); ok {
+		r1 = returnFunc(ctx, bucketName, objectKey, ttl, contentDisposition)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -411,11 +411,12 @@ type S3Client_GeneratePresignedGetURL_Call struct {
 //   - bucketName string
 //   - objectKey string
 //   - ttl time.Duration
-func (_e *S3Client_Expecter) GeneratePresignedGetURL(ctx interface{}, bucketName interface{}, objectKey interface{}, ttl interface{}) *S3Client_GeneratePresignedGetURL_Call {
-	return &S3Client_GeneratePresignedGetURL_Call{Call: _e.mock.On("GeneratePresignedGetURL", ctx, bucketName, objectKey, ttl)}
+//   - contentDisposition *string
+func (_e *S3Client_Expecter) GeneratePresignedGetURL(ctx interface{}, bucketName interface{}, objectKey interface{}, ttl interface{}, contentDisposition interface{}) *S3Client_GeneratePresignedGetURL_Call {
+	return &S3Client_GeneratePresignedGetURL_Call{Call: _e.mock.On("GeneratePresignedGetURL", ctx, bucketName, objectKey, ttl, contentDisposition)}
 }
 
-func (_c *S3Client_GeneratePresignedGetURL_Call) Run(run func(ctx context.Context, bucketName string, objectKey string, ttl time.Duration)) *S3Client_GeneratePresignedGetURL_Call {
+func (_c *S3Client_GeneratePresignedGetURL_Call) Run(run func(ctx context.Context, bucketName string, objectKey string, ttl time.Duration, contentDisposition *string)) *S3Client_GeneratePresignedGetURL_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -433,11 +434,16 @@ func (_c *S3Client_GeneratePresignedGetURL_Call) Run(run func(ctx context.Contex
 		if args[3] != nil {
 			arg3 = args[3].(time.Duration)
 		}
+		var arg4 *string
+		if args[4] != nil {
+			arg4 = args[4].(*string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -448,14 +454,14 @@ func (_c *S3Client_GeneratePresignedGetURL_Call) Return(uRL *url.URL, err error)
 	return _c
 }
 
-func (_c *S3Client_GeneratePresignedGetURL_Call) RunAndReturn(run func(ctx context.Context, bucketName string, objectKey string, ttl time.Duration) (*url.URL, error)) *S3Client_GeneratePresignedGetURL_Call {
+func (_c *S3Client_GeneratePresignedGetURL_Call) RunAndReturn(run func(ctx context.Context, bucketName string, objectKey string, ttl time.Duration, contentDisposition *string) (*url.URL, error)) *S3Client_GeneratePresignedGetURL_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GeneratePresignedPutURL provides a mock function for the type S3Client
-func (_mock *S3Client) GeneratePresignedPutURL(ctx context.Context, bucketName string, objectKey string, objectSize int64, sha256Sum string, ttl time.Duration) (*url.URL, error) {
-	ret := _mock.Called(ctx, bucketName, objectKey, objectSize, sha256Sum, ttl)
+func (_mock *S3Client) GeneratePresignedPutURL(ctx context.Context, bucketName string, objectKey string, objectSize int64, sha256Sum string, ttl time.Duration, contentType *string) (*url.URL, error) {
+	ret := _mock.Called(ctx, bucketName, objectKey, objectSize, sha256Sum, ttl, contentType)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GeneratePresignedPutURL")
@@ -463,18 +469,18 @@ func (_mock *S3Client) GeneratePresignedPutURL(ctx context.Context, bucketName s
 
 	var r0 *url.URL
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int64, string, time.Duration) (*url.URL, error)); ok {
-		return returnFunc(ctx, bucketName, objectKey, objectSize, sha256Sum, ttl)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int64, string, time.Duration, *string) (*url.URL, error)); ok {
+		return returnFunc(ctx, bucketName, objectKey, objectSize, sha256Sum, ttl, contentType)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int64, string, time.Duration) *url.URL); ok {
-		r0 = returnFunc(ctx, bucketName, objectKey, objectSize, sha256Sum, ttl)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int64, string, time.Duration, *string) *url.URL); ok {
+		r0 = returnFunc(ctx, bucketName, objectKey, objectSize, sha256Sum, ttl, contentType)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*url.URL)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int64, string, time.Duration) error); ok {
-		r1 = returnFunc(ctx, bucketName, objectKey, objectSize, sha256Sum, ttl)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int64, string, time.Duration, *string) error); ok {
+		r1 = returnFunc(ctx, bucketName, objectKey, objectSize, sha256Sum, ttl, contentType)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -493,11 +499,12 @@ type S3Client_GeneratePresignedPutURL_Call struct {
 //   - objectSize int64
 //   - sha256Sum string
 //   - ttl time.Duration
-func (_e *S3Client_Expecter) GeneratePresignedPutURL(ctx interface{}, bucketName interface{}, objectKey interface{}, objectSize interface{}, sha256Sum interface{}, ttl interface{}) *S3Client_GeneratePresignedPutURL_Call {
-	return &S3Client_GeneratePresignedPutURL_Call{Call: _e.mock.On("GeneratePresignedPutURL", ctx, bucketName, objectKey, objectSize, sha256Sum, ttl)}
+//   - contentType *string
+func (_e *S3Client_Expecter) GeneratePresignedPutURL(ctx interface{}, bucketName interface{}, objectKey interface{}, objectSize interface{}, sha256Sum interface{}, ttl interface{}, contentType interface{}) *S3Client_GeneratePresignedPutURL_Call {
+	return &S3Client_GeneratePresignedPutURL_Call{Call: _e.mock.On("GeneratePresignedPutURL", ctx, bucketName, objectKey, objectSize, sha256Sum, ttl, contentType)}
 }
 
-func (_c *S3Client_GeneratePresignedPutURL_Call) Run(run func(ctx context.Context, bucketName string, objectKey string, objectSize int64, sha256Sum string, ttl time.Duration)) *S3Client_GeneratePresignedPutURL_Call {
+func (_c *S3Client_GeneratePresignedPutURL_Call) Run(run func(ctx context.Context, bucketName string, objectKey string, objectSize int64, sha256Sum string, ttl time.Duration, contentType *string)) *S3Client_GeneratePresignedPutURL_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -523,6 +530,10 @@ func (_c *S3Client_GeneratePresignedPutURL_Call) Run(run func(ctx context.Contex
 		if args[5] != nil {
 			arg5 = args[5].(time.Duration)
 		}
+		var arg6 *string
+		if args[6] != nil {
+			arg6 = args[6].(*string)
+		}
 		run(
 			arg0,
 			arg1,
@@ -530,6 +541,7 @@ func (_c *S3Client_GeneratePresignedPutURL_Call) Run(run func(ctx context.Contex
 			arg3,
 			arg4,
 			arg5,
+			arg6,
 		)
 	})
 	return _c
@@ -540,7 +552,7 @@ func (_c *S3Client_GeneratePresignedPutURL_Call) Return(uRL *url.URL, err error)
 	return _c
 }
 
-func (_c *S3Client_GeneratePresignedPutURL_Call) RunAndReturn(run func(ctx context.Context, bucketName string, objectKey string, objectSize int64, sha256Sum string, ttl time.Duration) (*url.URL, error)) *S3Client_GeneratePresignedPutURL_Call {
+func (_c *S3Client_GeneratePresignedPutURL_Call) RunAndReturn(run func(ctx context.Context, bucketName string, objectKey string, objectSize int64, sha256Sum string, ttl time.Duration, contentType *string) (*url.URL, error)) *S3Client_GeneratePresignedPutURL_Call {
 	_c.Call.Return(run)
 	return _c
 }
