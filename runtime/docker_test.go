@@ -150,7 +150,7 @@ func TestDockerRuntimeVolumeRoundTrip(t *testing.T) {
 	volName := uniqueName("vol")
 	_, err = mgr.DefineVolume(ctxt, ContainerVolume{Name: volName}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(mgr.DeleteVolume(context.Background(), volName)) })
+	t.Cleanup(func() { assert.NoError(mgr.DeleteVolume(context.Background(), volName, false)) })
 
 	sentinel := "vol-" + uuid.NewString()
 

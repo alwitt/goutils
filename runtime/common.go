@@ -418,8 +418,12 @@ type VolumeManager interface {
 		DeleteVolume delete a volume by name. Deleting a volume that does not exist is a
 		no-op success (idempotent).
 
+		Returns a ConsistencyError when some entity currently mounts the volume, and it
+		therefore can't be deleted without `force`.
+
 			@param ctxt context.Context - the operational context
 			@param name string - the volume name
+			@param force bool - delete the volume even while it is mounted
 	*/
-	DeleteVolume(ctxt context.Context, name string) error
+	DeleteVolume(ctxt context.Context, name string, force bool) error
 }

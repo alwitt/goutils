@@ -181,15 +181,30 @@ func (m *dockerVolumeManager) DefineVolume(
 
 // DeleteVolume delete a Docker volume by name. Removing a volume that does not exist is a
 // no-op success (idempotent).
-func (m *dockerVolumeManager) DeleteVolume(ctxt context.Context, name string) error {
+//
+// Returns a ConsistencyError when some entity currently mounts the volume, and it therefore
+// can't be deleted without `force`. Without force the daemon checks in-use atomically as
+// part of the removal, so the refusal carries no TOCTOU window - unlike a separate
+// mounter lookup followed by a delete.
+func (m *dockerVolumeManager) DeleteVolume(ctxt context.Context, name string, force bool) error {
 	if err := m.checkReady(); err != nil {
 		return err
 	}
 	if _, err := m.cli.VolumeRemove(
-		ctxt, name, dockerClient.VolumeRemoveOptions{Force: true},
+		ctxt, name, dockerClient.VolumeRemoveOptions{Force: force},
 	); err != nil {
 		if cerrdefs.IsNotFound(err) {
 			return nil
+		}
+		// The daemon answers a removal blocked by an active mount with 409, which the client
+		// maps onto errdefs' conflict. It is the only conflict this endpoint documents, so the
+		// mapping is unambiguous here - it does not generalize to other endpoints.
+		if cerrdefs.IsConflict(err) {
+			return goutils.NewConsistencyError(
+				"docker volume '"+name+"' is currently mounted and can't be deleted without force",
+				err,
+				true,
+			)
 		}
 		return goutils.NewDockerError("failed to remove docker volume '"+name+"'", err, true)
 	}

@@ -17,6 +17,9 @@ packages:
   github.com/alwitt/goutils/redis:
     config:
       all: true
+  github.com/alwitt/goutils/runtime:
+    config:
+      all: true
   github.com/alwitt/goutils/test:
     config:
       all: true

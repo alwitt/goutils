@@ -56,7 +56,7 @@ func TestDockerVolumeManagerLifecycle(t *testing.T) {
 	{
 		created, err := mgr.DefineVolume(ctxt, ContainerVolume{Name: name0}, nil)
 		require.NoError(t, err)
-		t.Cleanup(func() { assert.NoError(mgr.DeleteVolume(context.Background(), name0)) })
+		t.Cleanup(func() { assert.NoError(mgr.DeleteVolume(context.Background(), name0, false)) })
 		assert.Equal(name0, created.Name)
 	}
 
@@ -69,7 +69,7 @@ func TestDockerVolumeManagerLifecycle(t *testing.T) {
 		}
 		created, err := mgr.DefineVolume(ctxt, ContainerVolume{Name: name1}, meta)
 		require.NoError(t, err)
-		t.Cleanup(func() { assert.NoError(mgr.DeleteVolume(context.Background(), name1)) })
+		t.Cleanup(func() { assert.NoError(mgr.DeleteVolume(context.Background(), name1, false)) })
 		assert.Equal(name1, created.Name)
 	}
 
@@ -99,7 +99,7 @@ func TestDockerVolumeManagerLifecycle(t *testing.T) {
 		control := fmt.Sprintf("goutils-ctrltest-%s", uuid.NewString())
 		_, err := mgr.DefineVolume(ctxt, ContainerVolume{Name: control}, nil)
 		require.NoError(t, err)
-		t.Cleanup(func() { assert.NoError(mgr.DeleteVolume(context.Background(), control)) })
+		t.Cleanup(func() { assert.NoError(mgr.DeleteVolume(context.Background(), control, false)) })
 
 		prefix := "goutils-voltest-"
 		filtered, err := mgr.ListVolumes(ctxt, &prefix)
@@ -118,7 +118,7 @@ func TestDockerVolumeManagerLifecycle(t *testing.T) {
 
 	// DeleteVolume removes it; a follow-up GetVolume reports not-found.
 	{
-		require.NoError(t, mgr.DeleteVolume(ctxt, name0))
+		require.NoError(t, mgr.DeleteVolume(ctxt, name0, false))
 		_, _, err := mgr.GetVolume(ctxt, name0)
 		assert.Error(err)
 		var notFoundErr goutils.NotFoundError
@@ -134,7 +134,7 @@ func TestDockerVolumeManagerDeleteIdempotent(t *testing.T) {
 	mgr := setupVolumeManager(ctxt, t)
 
 	// Deleting a volume that was never created is a no-op success.
-	err := mgr.DeleteVolume(ctxt, uniqueVolumeName())
+	err := mgr.DeleteVolume(ctxt, uniqueVolumeName(), false)
 	assert.NoError(err)
 }
 
@@ -163,7 +163,7 @@ func TestDockerVolumeManagerBadMetadata(t *testing.T) {
 	// A non-nil metadata of the wrong concrete type is a consistency error; no volume is
 	// created. Register a defensive cleanup in case the guard ever regresses.
 	name := uniqueVolumeName()
-	t.Cleanup(func() { _ = mgr.DeleteVolume(context.Background(), name) })
+	t.Cleanup(func() { _ = mgr.DeleteVolume(context.Background(), name, false) })
 
 	created, err := mgr.DefineVolume(ctxt, ContainerVolume{Name: name}, "not-a-metadata")
 	assert.Error(err)
@@ -175,6 +175,57 @@ func TestDockerVolumeManagerBadMetadata(t *testing.T) {
 	_, _, getErr := mgr.GetVolume(ctxt, name)
 	var notFoundErr goutils.NotFoundError
 	assert.True(errors.As(getErr, &notFoundErr))
+}
+
+func TestDockerVolumeManagerDeleteMounted(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+	ctxt := context.Background()
+
+	mgr := setupVolumeManager(ctxt, t)
+
+	name := uniqueVolumeName()
+	_, err := mgr.DefineVolume(ctxt, ContainerVolume{Name: name}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mgr.DeleteVolume(context.Background(), name, true) })
+
+	// Hold the volume with a live container. The container is started but never waited on,
+	// so it is still running - and still mounting - for the duration of the assertions.
+	command := ContainerCommand{Entrypoint: []string{"sleep", "300"}}
+	params := DockerRuntimeParams{
+		ContainerRuntimeParams: ContainerRuntimeParams{
+			Image:        testImage,
+			TimeoutSecs:  300,
+			VolumeMounts: []ContainerVolumeMount{{Name: name, MountPath: "/vol"}},
+		},
+	}
+	holder, err := NewDockerSystemCallRuntime(
+		ctxt, uniqueVolumeName(), command, params, true,
+	)
+	require.NoError(t, err)
+	require.NoError(t, holder.Start(ctxt))
+	defer func() { assert.NoError(holder.Cleanup(context.Background())) }()
+
+	// The mounter is visible through GetVolume.
+	{
+		_, mounters, err := mgr.GetVolume(ctxt, name)
+		require.NoError(t, err)
+		assert.NotEmpty(mounters, "the holding container should be reported as a mounter")
+	}
+
+	// Without force, the daemon refuses the removal and that refusal surfaces as a
+	// ConsistencyError - distinct from a DockerError, so a caller can tell "still in use"
+	// apart from "the delete failed".
+	{
+		err := mgr.DeleteVolume(ctxt, name, false)
+		assert.Error(err)
+		var consistencyErr goutils.ConsistencyError
+		assert.True(errors.As(err, &consistencyErr), "expected ConsistencyError, got %T", err)
+
+		// The refusal left the volume in place.
+		_, _, getErr := mgr.GetVolume(ctxt, name)
+		assert.NoError(getErr)
+	}
 }
 
 func TestDockerVolumeManagerNotSetup(t *testing.T) {
@@ -206,7 +257,7 @@ func TestDockerVolumeManagerNotSetup(t *testing.T) {
 		assertNotReady(err)
 	}
 	{
-		err := mgr.DeleteVolume(ctxt, uniqueVolumeName())
+		err := mgr.DeleteVolume(ctxt, uniqueVolumeName(), false)
 		assertNotReady(err)
 	}
 }
