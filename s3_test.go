@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -811,4 +812,163 @@ func TestS3ClientNewClientWithRegion(t *testing.T) {
 	testBucket := fmt.Sprintf("ut-s3-client-region-%s", uuid.NewString())
 	assert.Nil(uut.CreateBucket(utCtx, testBucket))
 	assert.Nil(uut.DeleteBucket(utCtx, testBucket))
+}
+
+// ========================================================================================
+// S3 client manager
+//
+// These tests do not need a live object store: building a client performs no IO, and the
+// manager is exercised purely through the timestamps handed to GetClient.
+
+// TestS3ClientManagerBadTTL verifies a non-positive TTL is rejected up front.
+func TestS3ClientManagerBadTTL(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	config := getS3ClientConfig()
+
+	for _, ttl := range []time.Duration{0, -time.Second} {
+		uut, err := goutils.NewS3ClientManager(config, ttl)
+		assert.NotNil(err, "TTL %s should be rejected", ttl)
+		assert.Nil(uut)
+	}
+}
+
+// TestS3ClientManagerReuseWithinTTL verifies the same client is handed out while it is
+// still within its TTL.
+func TestS3ClientManagerReuseWithinTTL(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+	ttl := time.Minute
+
+	uut, err := goutils.NewS3ClientManager(getS3ClientConfig(), ttl)
+	assert.Nil(err)
+
+	startTime := time.Now().UTC()
+
+	first, err := uut.GetClient(utCtx, startTime)
+	assert.Nil(err)
+	assert.NotNil(first)
+
+	second, err := uut.GetClient(utCtx, startTime.Add(ttl/2))
+	assert.Nil(err)
+	assert.Same(first, second)
+}
+
+// TestS3ClientManagerRecycleAfterTTL verifies an aged out client is replaced, and that
+// the TTL clock restarts from the replacement's creation timestamp.
+func TestS3ClientManagerRecycleAfterTTL(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+	ttl := time.Minute
+
+	uut, err := goutils.NewS3ClientManager(getS3ClientConfig(), ttl)
+	assert.Nil(err)
+
+	startTime := time.Now().UTC()
+
+	first, err := uut.GetClient(utCtx, startTime)
+	assert.Nil(err)
+
+	// Past the TTL, so a new client is expected.
+	replacementTime := startTime.Add(ttl + time.Second)
+	second, err := uut.GetClient(utCtx, replacementTime)
+	assert.Nil(err)
+	assert.NotNil(second)
+	assert.NotSame(first, second)
+
+	// Still one second into the replacement's own TTL, so it is handed out again. Had
+	// the clock stayed anchored to the original client, this would have replaced it.
+	third, err := uut.GetClient(utCtx, replacementTime.Add(time.Second))
+	assert.Nil(err)
+	assert.Same(second, third)
+}
+
+// TestS3ClientManagerRecycleAtExactTTL pins the boundary: a client exactly TTL old is
+// already considered aged out.
+func TestS3ClientManagerRecycleAtExactTTL(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+	ttl := time.Minute
+
+	uut, err := goutils.NewS3ClientManager(getS3ClientConfig(), ttl)
+	assert.Nil(err)
+
+	startTime := time.Now().UTC()
+
+	first, err := uut.GetClient(utCtx, startTime)
+	assert.Nil(err)
+
+	second, err := uut.GetClient(utCtx, startTime.Add(ttl))
+	assert.Nil(err)
+	assert.NotSame(first, second)
+}
+
+// TestS3ClientManagerConcurrentGet verifies concurrent callers all observe one client
+// rather than racing to build competing replacements. Run with `-race` for full value.
+func TestS3ClientManagerConcurrentGet(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	uut, err := goutils.NewS3ClientManager(getS3ClientConfig(), time.Minute)
+	assert.Nil(err)
+
+	readAt := time.Now().UTC()
+
+	const callerCount = 16
+	clients := make([]goutils.S3Client, callerCount)
+	errs := make([]error, callerCount)
+
+	start := make(chan struct{})
+	wg := sync.WaitGroup{}
+	for idx := range callerCount {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-start
+			clients[idx], errs[idx] = uut.GetClient(utCtx, readAt)
+		}(idx)
+	}
+	close(start)
+	wg.Wait()
+
+	for idx := range callerCount {
+		assert.Nil(errs[idx])
+		assert.Same(clients[0], clients[idx])
+	}
+}
+
+// TestS3ClientManagerCreateFailure verifies a config the object store client rejects is
+// reported on GetClient, and that the manager retries on the next call.
+func TestS3ClientManagerCreateFailure(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	// An endpoint with a fully qualified path is rejected when the client is built.
+	config := getS3ClientConfig()
+	config.ServerEndpoint += "/not/a/valid/endpoint"
+
+	uut, err := goutils.NewS3ClientManager(config, time.Minute)
+	assert.Nil(err)
+
+	currentTime := time.Now().UTC()
+
+	client, err := uut.GetClient(utCtx, currentTime)
+	assert.NotNil(err)
+	assert.Nil(client)
+
+	// The failure is not sticky; the manager tries again rather than caching it.
+	client, err = uut.GetClient(utCtx, currentTime.Add(time.Second))
+	assert.NotNil(err)
+	assert.Nil(client)
 }

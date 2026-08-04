@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/apex/log"
@@ -803,4 +804,132 @@ func (s *s3ClientImpl) GeneratePresignedPutURL(
 		)
 	}
 	return putURL, nil
+}
+
+// ========================================================================================
+
+/*
+S3ClientManager hands out S3Client instances built from one S3Config, replacing the
+instance once it has aged past a TTL.
+
+Long lived S3 clients have been observed losing their connection to the object store
+over time, and only recovering once the client is recreated. Rather than have every
+caller track that, they ask the manager for a client each time they need one, and the
+manager transparently retires and rebuilds the instance on the TTL.
+
+Retiring an instance simply drops the manager's reference to it: the underlying client
+has no close operation, so any operation already in flight, and any S3ObjectReader
+already handed out, continues to work against the retired client. Its idle keep-alive
+connections are reaped by the client's own transport. A client returned by GetClient
+therefore stays usable for as long as the caller needs it; callers should just avoid
+caching it across operations, which would defeat the point of the manager.
+*/
+type S3ClientManager interface {
+	/*
+		GetClient get the S3 client to use
+
+		A new client is created if the manager has none yet, or if the current one was
+		created a TTL or longer before the given timestamp. Otherwise the current client
+		is returned. The same instance is shared by all callers until it is replaced;
+		S3Client is safe for concurrent use.
+
+			@param ctxt context.Context - execution context
+			@param timestamp time.Time - the current timestamp
+			@returns the S3 client to use
+	*/
+	GetClient(ctxt context.Context, timestamp time.Time) (S3Client, error)
+}
+
+// s3ClientManagerImpl implements S3ClientManager
+type s3ClientManagerImpl struct {
+	Component
+	config S3Config
+	ttl    time.Duration
+	lock   sync.Mutex
+	// client the currently active client, or nil if none has been created yet
+	client S3Client
+	// createdAt the timestamp `client` was created with
+	createdAt time.Time
+}
+
+/*
+NewS3ClientManager define a new S3 client manager
+
+The first client is not built here but on the first GetClient call, so a config the
+object store client rejects is reported there rather than at construction.
+
+	@param config S3Config - S3 client config all managed clients are created with
+	@param ttl time.Duration - how long a client is used before it is replaced
+	@returns new manager
+*/
+func NewS3ClientManager(config S3Config, ttl time.Duration) (S3ClientManager, error) {
+	if ttl <= 0 {
+		return nil, NewBadInputError(
+			fmt.Sprintf("S3 client TTL must be positive, got %s", ttl), nil, true,
+		)
+	}
+
+	logTags := log.Fields{
+		"module": "common", "component": "s3-client-manager", "instance": config.ServerEndpoint,
+	}
+
+	return &s3ClientManagerImpl{
+		Component: Component{
+			LogTags: logTags,
+			LogTagModifiers: []LogMetadataModifier{
+				ModifyLogMetadataByRestRequestParam,
+			},
+		},
+		config:    config,
+		ttl:       ttl,
+		lock:      sync.Mutex{},
+		client:    nil,
+		createdAt: time.Time{},
+	}, nil
+}
+
+/*
+GetClient get the S3 client to use
+
+	@param ctxt context.Context - execution context
+	@param timestamp time.Time - the current timestamp
+	@returns the S3 client to use
+*/
+func (m *s3ClientManagerImpl) GetClient(
+	ctxt context.Context, timestamp time.Time,
+) (S3Client, error) {
+	logTags := m.GetLogTagsForContext(ctxt)
+
+	// Client creation performs no IO, so holding the lock across it is cheap, and it
+	// guarantees concurrent callers observe one client rather than racing to build
+	// competing replacements.
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if m.client != nil {
+		age := timestamp.Sub(m.createdAt)
+		if age < m.ttl {
+			return m.client, nil
+		}
+		log.
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Infof("S3 client reached age %s, past the TTL of %s. Replacing it", age, m.ttl)
+	}
+
+	newClient, err := NewS3Client(m.config)
+	if err != nil {
+		log.
+			WithError(err).
+			WithFields(UpdateCodePositionInTags(logTags)).
+			Error("Failed to create new S3 client")
+		// Leave the current client in place. It is either nil, or one which is already
+		// past its TTL, so the next call retries the creation either way.
+		return nil, err
+	}
+
+	m.client = newClient
+	m.createdAt = timestamp
+	log.WithFields(UpdateCodePositionInTags(logTags)).Info("Created new S3 client")
+
+	return m.client, nil
 }
