@@ -49,6 +49,8 @@ type S3ObjectStat struct {
 	// multipart uploads that store a composite checksum). Objects uploaded through
 	// PutObject always carry one.
 	CheckSum string
+	// LastModified timestamp of the most recent object modification (content or metadata)
+	LastModified time.Time
 }
 
 // S3Credentials S3 credentials
@@ -617,7 +619,10 @@ func (s *s3ClientImpl) GetObjectStat(
 		)
 	}
 	return S3ObjectStat{
-		MIMEType: info.ContentType, Size: info.Size, CheckSum: info.ChecksumSHA256,
+		MIMEType:     info.ContentType,
+		Size:         info.Size,
+		CheckSum:     info.ChecksumSHA256,
+		LastModified: info.LastModified,
 	}, nil
 }
 

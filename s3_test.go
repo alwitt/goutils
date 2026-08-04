@@ -793,6 +793,73 @@ func TestS3ClientPutObjectKnownSize(t *testing.T) {
 	assert.NotEmpty(stat.CheckSum)
 }
 
+// TestS3ClientObjectStatLastModified verifies S3ObjectStat.LastModified reports the
+// object store's record of the last write: it is populated, lands around the upload
+// time, is the same value whether read through GetObjectStat or GetObject, and moves
+// forward when the object is overwritten.
+func TestS3ClientObjectStatLastModified(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+	config := getS3ClientConfig()
+
+	uut, err := goutils.NewS3Client(config)
+	assert.Nil(err)
+
+	testBucket := fmt.Sprintf("ut-s3-client-last-modified-%s", uuid.NewString())
+	assert.Nil(uut.CreateBucket(utCtx, testBucket))
+	defer func() {
+		_ = uut.DeleteBucket(utCtx, testBucket)
+	}()
+
+	testObject := uuid.NewString()
+	defer func() {
+		_ = uut.DeleteObject(utCtx, testBucket, testObject)
+	}()
+
+	// --- first write ---------------------------------------------------------
+	// Last-Modified is recorded with second resolution, so pad the expected window
+	// by a couple of seconds on either side of the upload.
+	const clockSlack = 2 * time.Second
+	beforeFirstWrite := time.Now().UTC().Add(-clockSlack)
+	assert.Nil(uut.PutObject(
+		utCtx, testBucket, testObject, bytes.NewBufferString("last-modified-body-1"), -1, nil,
+	))
+	afterFirstWrite := time.Now().UTC().Add(clockSlack)
+
+	firstStat, err := uut.GetObjectStat(utCtx, testBucket, testObject)
+	assert.Nil(err)
+	assert.False(firstStat.LastModified.IsZero(), "LastModified should be populated")
+	assert.WithinRange(firstStat.LastModified, beforeFirstWrite, afterFirstWrite)
+
+	// GetObject stats the object first, so it must report the same timestamp.
+	{
+		stat, reader, err := uut.GetObject(utCtx, testBucket, testObject)
+		assert.Nil(err)
+		assert.Nil(reader.Close())
+		assert.Equal(firstStat.LastModified, stat.LastModified)
+	}
+
+	// --- overwrite -----------------------------------------------------------
+	// With only second resolution available, wait out the current second so the
+	// rewrite is guaranteed to land on a strictly later timestamp.
+	time.Sleep(time.Second + time.Millisecond*100)
+
+	assert.Nil(uut.PutObject(
+		utCtx, testBucket, testObject, bytes.NewBufferString("last-modified-body-2"), -1, nil,
+	))
+
+	secondStat, err := uut.GetObjectStat(utCtx, testBucket, testObject)
+	assert.Nil(err)
+	assert.True(
+		secondStat.LastModified.After(firstStat.LastModified),
+		"overwrite should advance LastModified: %s is not after %s",
+		secondStat.LastModified,
+		firstStat.LastModified,
+	)
+}
+
 // TestS3ClientNewClientWithRegion verifies that a client constructed with an
 // explicit S3Config.Region is created without error and is usable.
 func TestS3ClientNewClientWithRegion(t *testing.T) {
