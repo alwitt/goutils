@@ -376,6 +376,7 @@ func TestS3ClientGetObjectStat(t *testing.T) {
 	const expectedSize int64 = 7913521
 
 	assert.Equal(expectedSize, fileSize)
+	assert.Equal(objectKey, stat.Key, "key mismatch")
 	assert.Equal(expectedSize, stat.Size, "size mismatch")
 	assert.Equal(checksumB64, stat.CheckSum, "checksum mismatch")
 	assert.Equal(jpegMIME, stat.MIMEType, "content-type mismatch")
@@ -575,6 +576,16 @@ func TestS3ClientCreateBucketIdempotent(t *testing.T) {
 	assert.Nil(uut.DeleteBucket(utCtx, testBucket))
 }
 
+// listedKeys project a listing down to its object keys, sorted.
+func listedKeys(objects []goutils.S3ObjectStat) []string {
+	keys := make([]string, 0, len(objects))
+	for _, object := range objects {
+		keys = append(keys, object.Key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // TestS3ClientListObjectsPagination exercises the prefix, startingKey (StartAfter,
 // exclusive) and maxKeys (total cap) options of ListObjects.
 func TestS3ClientListObjectsPagination(t *testing.T) {
@@ -612,8 +623,7 @@ func TestS3ClientListObjectsPagination(t *testing.T) {
 	{
 		objects, err := uut.ListObjects(utCtx, testBucket, &pagePrefix, nil, nil)
 		assert.Nil(err)
-		sort.Strings(objects)
-		assert.Equal(pageKeys, objects)
+		assert.Equal(pageKeys, listedKeys(objects))
 	}
 
 	// maxKeys: cap the total returned (exercises the early-break + cancel).
@@ -623,8 +633,7 @@ func TestS3ClientListObjectsPagination(t *testing.T) {
 		assert.Nil(err)
 		assert.Len(objects, 2)
 		// Keys are returned in lexical order, so the first two page keys.
-		sort.Strings(objects)
-		assert.Equal(pageKeys[:2], objects)
+		assert.Equal(pageKeys[:2], listedKeys(objects))
 	}
 
 	// startingKey: strictly after page/01 (exclusive).
@@ -632,9 +641,8 @@ func TestS3ClientListObjectsPagination(t *testing.T) {
 		startAfter := "page/01"
 		objects, err := uut.ListObjects(utCtx, testBucket, &pagePrefix, &startAfter, nil)
 		assert.Nil(err)
-		sort.Strings(objects)
-		assert.Equal([]string{"page/02", "page/03", "page/04"}, objects)
-		assert.NotContains(objects, "page/01")
+		assert.Equal([]string{"page/02", "page/03", "page/04"}, listedKeys(objects))
+		assert.NotContains(listedKeys(objects), "page/01")
 	}
 
 	// startingKey + maxKeys combined.
@@ -644,8 +652,83 @@ func TestS3ClientListObjectsPagination(t *testing.T) {
 		objects, err := uut.ListObjects(utCtx, testBucket, &pagePrefix, &startAfter, &maxKeys)
 		assert.Nil(err)
 		assert.Len(objects, 2)
-		sort.Strings(objects)
-		assert.Equal([]string{"page/02", "page/03"}, objects)
+		assert.Equal([]string{"page/02", "page/03"}, listedKeys(objects))
+	}
+}
+
+// TestS3ClientListObjectsStats verifies which S3ObjectStat fields a listing populates.
+// Key, Size and LastModified come back from the listing itself; MIMEType and CheckSum
+// are always empty because an S3 listing response carries neither.
+func TestS3ClientListObjectsStats(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+	config := getS3ClientConfig()
+
+	uut, err := goutils.NewS3Client(config)
+	assert.Nil(err)
+
+	testBucket := fmt.Sprintf("ut-s3-client-list-stats-%s", uuid.NewString())
+	assert.Nil(uut.CreateBucket(utCtx, testBucket))
+	defer func() {
+		_ = uut.DeleteBucket(utCtx, testBucket)
+	}()
+
+	// Distinct body lengths so a size can only match the object it belongs to. The
+	// explicit MIME type is what makes the "MIMEType is empty" assertion meaningful:
+	// the objects genuinely have one, the listing just does not report it.
+	testPrefix := "stats/"
+	bodyByKey := map[string]string{
+		testPrefix + "a": "a",
+		testPrefix + "b": "bb",
+		testPrefix + "c": "ccc",
+	}
+	testMIMEType := "text/plain"
+
+	var testKeys []string
+	// Bound the expected timestamp window by whole seconds either side of the writes,
+	// as Last-Modified is recorded with second resolution.
+	const clockSlack = 2 * time.Second
+	beforeWrite := time.Now().UTC().Add(-clockSlack)
+	for objectKey, body := range bodyByKey {
+		assert.Nil(uut.PutObject(
+			utCtx, testBucket, objectKey,
+			bytes.NewBufferString(body), int64(len(body)), &testMIMEType,
+		))
+		testKeys = append(testKeys, objectKey)
+	}
+	afterWrite := time.Now().UTC().Add(clockSlack)
+	sort.Strings(testKeys)
+	defer func() {
+		_, _ = uut.DeleteObjects(utCtx, testBucket, testKeys)
+	}()
+
+	objects, err := uut.ListObjects(utCtx, testBucket, &testPrefix, nil, nil)
+	assert.Nil(err)
+	assert.Equal(testKeys, listedKeys(objects))
+
+	for _, object := range objects {
+		body, known := bodyByKey[object.Key]
+		assert.True(known, "listing returned an unexpected key %q", object.Key)
+
+		assert.Equal(int64(len(body)), object.Size, "size mismatch for %s", object.Key)
+		assert.False(object.LastModified.IsZero(), "LastModified unset for %s", object.Key)
+		assert.WithinRange(object.LastModified, beforeWrite, afterWrite)
+
+		// The documented contract: a listing cannot report either of these, even though
+		// the objects were stored with a MIME type and PutObject always records a
+		// SHA-256. Should this ever start failing, the object store began returning more
+		// than the standard listing response and the S3ObjectStat field docs need
+		// revisiting - the assertion is here to notice that, not to constrain it.
+		assert.Empty(object.MIMEType, "listing reported a MIME type for %s", object.Key)
+		assert.Empty(object.CheckSum, "listing reported a checksum for %s", object.Key)
+
+		// Both are available from a per-object stat, which is what the docs point at.
+		stat, err := uut.GetObjectStat(utCtx, testBucket, object.Key)
+		assert.Nil(err)
+		assert.Equal(testMIMEType, stat.MIMEType)
+		assert.NotEmpty(stat.CheckSum)
 	}
 }
 

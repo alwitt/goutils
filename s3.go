@@ -40,7 +40,11 @@ func validatePresignTTL(ttl time.Duration) error {
 
 // S3ObjectStat S3 object stats
 type S3ObjectStat struct {
-	// MIMEType object MIME type
+	// Key the object key within its bucket
+	Key string
+	// MIMEType object MIME type.
+	//
+	// NOT populated by ListObjects; an S3 listing response does not carry it.
 	MIMEType string
 	// Size object file size
 	Size int64
@@ -48,6 +52,8 @@ type S3ObjectStat struct {
 	// that were not uploaded with a SHA-256 checksum (e.g. by other tools, or via
 	// multipart uploads that store a composite checksum). Objects uploaded through
 	// PutObject always carry one.
+	//
+	// NOT populated by ListObjects; an S3 listing response does not carry it.
 	CheckSum string
 	// LastModified timestamp of the most recent object modification (content or metadata)
 	LastModified time.Time
@@ -86,7 +92,12 @@ type S3Client interface {
 	ListBuckets(ctx context.Context) ([]string, error)
 
 	/*
-		ListObjects get a list of objects in a bucket
+		ListObjects get a list of objects in a bucket, with the stats the listing reports
+
+		Only Key, Size and LastModified are populated. MIMEType and CheckSum are ALWAYS
+		empty: an S3 listing response carries neither, as both are only available from
+		the response headers of a per-object stat. Call GetObjectStat on a specific key
+		when either is needed.
 
 			@param ctx context.Context - execution context
 			@param bucket string - the bucket name
@@ -96,7 +107,7 @@ type S3Client interface {
 			       key, not offset, so pass the last key of a previous page to continue.
 			@param maxKeys *int - optionally, cap the total number of keys returned. If
 			       nil, all matching keys are returned.
-			@return list of bucket objects
+			@return list of bucket objects, with the stats the listing reports
 	*/
 	ListObjects(
 		ctx context.Context,
@@ -104,7 +115,7 @@ type S3Client interface {
 		prefix *string,
 		startingKey *string,
 		maxKeys *int,
-	) ([]string, error)
+	) ([]S3ObjectStat, error)
 
 	/*
 		CreateBucket create a bucket
@@ -357,7 +368,12 @@ func (s *s3ClientImpl) ListBuckets(ctx context.Context) ([]string, error) {
 }
 
 /*
-ListObjects get a list of objects in a bucket
+ListObjects get a list of objects in a bucket, with the stats the listing reports
+
+Only Key, Size and LastModified are populated. MIMEType and CheckSum are ALWAYS
+empty: an S3 listing response carries neither, as both are only available from
+the response headers of a per-object stat. Call GetObjectStat on a specific key
+when either is needed.
 
 	@param ctx context.Context - execution context
 	@param bucket string - the bucket name
@@ -367,7 +383,7 @@ ListObjects get a list of objects in a bucket
 	       key, not offset, so pass the last key of a previous page to continue.
 	@param maxKeys *int - optionally, cap the total number of keys returned. If
 	       nil, all matching keys are returned.
-	@return list of bucket objects
+	@return list of bucket objects, with the stats the listing reports
 */
 func (s *s3ClientImpl) ListObjects(
 	ctx context.Context,
@@ -375,7 +391,7 @@ func (s *s3ClientImpl) ListObjects(
 	prefix *string,
 	startingKey *string,
 	maxKeys *int,
-) ([]string, error) {
+) ([]S3ObjectStat, error) {
 	options := minio.ListObjectsOptions{
 		Recursive: true,
 	}
@@ -408,7 +424,7 @@ func (s *s3ClientImpl) ListObjects(
 		}
 	}()
 
-	result := []string{}
+	result := []S3ObjectStat{}
 	for objInfo := range objReadCh {
 		if objInfo.Err != nil {
 			message := fmt.Sprintf("failed to list object in bucket '%s'", bucket)
@@ -417,7 +433,13 @@ func (s *s3ClientImpl) ListObjects(
 			}
 			return nil, NewObjectStoreError(message, objInfo.Err, true)
 		}
-		result = append(result, objInfo.Key)
+		// MIMEType and CheckSum are deliberately not mapped: a listing response carries
+		// neither, so minio leaves both zero on a listed ObjectInfo.
+		result = append(result, S3ObjectStat{
+			Key:          objInfo.Key,
+			Size:         objInfo.Size,
+			LastModified: objInfo.LastModified,
+		})
 		if maxKeys != nil && len(result) >= *maxKeys {
 			cancelList()
 			break
@@ -619,6 +641,7 @@ func (s *s3ClientImpl) GetObjectStat(
 		)
 	}
 	return S3ObjectStat{
+		Key:          info.Key,
 		MIMEType:     info.ContentType,
 		Size:         info.Size,
 		CheckSum:     info.ChecksumSHA256,

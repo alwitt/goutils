@@ -772,23 +772,23 @@ func (_c *S3Client_ListBuckets_Call) RunAndReturn(run func(ctx context.Context) 
 }
 
 // ListObjects provides a mock function for the type S3Client
-func (_mock *S3Client) ListObjects(ctx context.Context, bucket string, prefix *string, startingKey *string, maxKeys *int) ([]string, error) {
+func (_mock *S3Client) ListObjects(ctx context.Context, bucket string, prefix *string, startingKey *string, maxKeys *int) ([]goutils.S3ObjectStat, error) {
 	ret := _mock.Called(ctx, bucket, prefix, startingKey, maxKeys)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListObjects")
 	}
 
-	var r0 []string
+	var r0 []goutils.S3ObjectStat
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, *string, *int) ([]string, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, *string, *int) ([]goutils.S3ObjectStat, error)); ok {
 		return returnFunc(ctx, bucket, prefix, startingKey, maxKeys)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, *string, *int) []string); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, *string, *int) []goutils.S3ObjectStat); ok {
 		r0 = returnFunc(ctx, bucket, prefix, startingKey, maxKeys)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]string)
+			r0 = ret.Get(0).([]goutils.S3ObjectStat)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, *string, *int) error); ok {
@@ -847,12 +847,12 @@ func (_c *S3Client_ListObjects_Call) Run(run func(ctx context.Context, bucket st
 	return _c
 }
 
-func (_c *S3Client_ListObjects_Call) Return(strings []string, err error) *S3Client_ListObjects_Call {
-	_c.Call.Return(strings, err)
+func (_c *S3Client_ListObjects_Call) Return(s3ObjectStats []goutils.S3ObjectStat, err error) *S3Client_ListObjects_Call {
+	_c.Call.Return(s3ObjectStats, err)
 	return _c
 }
 
-func (_c *S3Client_ListObjects_Call) RunAndReturn(run func(ctx context.Context, bucket string, prefix *string, startingKey *string, maxKeys *int) ([]string, error)) *S3Client_ListObjects_Call {
+func (_c *S3Client_ListObjects_Call) RunAndReturn(run func(ctx context.Context, bucket string, prefix *string, startingKey *string, maxKeys *int) ([]goutils.S3ObjectStat, error)) *S3Client_ListObjects_Call {
 	_c.Call.Return(run)
 	return _c
 }
