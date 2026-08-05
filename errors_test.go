@@ -123,6 +123,149 @@ func genRuntimeError() error {
 	)
 }
 
+// genSQLError is the innermost generator of the second ladder, deliberately a different
+// type from genValidationError's so a branched tree's results are told apart by type
+// rather than by counting.
+func genSQLError() error {
+	return NewSQLError("statement failed", fmt.Errorf("dummy error 4"), true)
+}
+
+// genPersistenceError wraps the SQLError from genSQLError, capturing its own call stack on
+// the way out.
+func genPersistenceError() error {
+	return NewPersistenceError(
+		"persistence operation failed", fmt.Errorf("dummy wrap 4 [%w]", genSQLError()), true,
+	)
+}
+
+// genUntracedError builds a chain that captured no stack anywhere, standing in for a
+// failure that arrived from a library rather than from one of this package's constructors.
+func genUntracedError() error {
+	return fmt.Errorf("outer [%w]", fmt.Errorf("inner"))
+}
+
+// stackTraceOf render an error's captured stack, failing the test if it carried none.
+func stackTraceOf(t *testing.T, err error) string {
+	t.Helper()
+	assert := assert.New(t)
+
+	carrier, ok := err.(interface{ StackTrace() string })
+	assert.True(ok, "error %T carried no stack", err)
+	if !ok {
+		return ""
+	}
+
+	rendered := carrier.StackTrace()
+	assert.NotEmpty(rendered)
+	return rendered
+}
+
+func TestAllDeepestErrorStackTraces(t *testing.T) {
+
+	log.SetLevel(log.DebugLevel)
+
+	// Case 1: a chain with no branch in it. The tree walker must agree with the chain
+	// walker exactly - one error, the root cause - which is what makes the singular form a
+	// special case of this one rather than a separate rule.
+	t.Run("reports one error for a linear chain", func(t *testing.T) {
+		assert := assert.New(t)
+
+		found := AllDeepestErrorsWithTrace(genRuntimeError())
+
+		assert.Len(found, 1)
+		var validationErr ValidationError
+		assert.True(errors.As(found[0], &validationErr))
+		assert.Contains(stackTraceOf(t, found[0]), "genValidationError")
+	})
+
+	// Case 2: the shape errors.Join produces. Both origins must survive - reporting one and
+	// dropping the other is the whole reason this exists - and they must arrive in the order
+	// they were joined, which for a caller aggregating failures is the order they happened.
+	t.Run("reports every branch of a joined tree, in join order", func(t *testing.T) {
+		assert := assert.New(t)
+
+		err := NewRuntimeError(
+			"two things failed", errors.Join(genRuntimeError(), genPersistenceError()), true,
+		)
+
+		found := AllDeepestErrorsWithTrace(err)
+
+		assert.Len(found, 2)
+		var validationErr ValidationError
+		assert.True(errors.As(found[0], &validationErr))
+		var sqlErr SQLError
+		assert.True(errors.As(found[1], &sqlErr))
+
+		assert.Contains(stackTraceOf(t, found[0]), "genValidationError")
+		assert.Contains(stackTraceOf(t, found[1]), "genSQLError")
+	})
+
+	// Case 3: a join nested inside a branch of another join. The result is one flat list of
+	// origins whatever shape the tree that produced them had, so a caller never walks it.
+	t.Run("flattens a join nested inside a branch", func(t *testing.T) {
+		assert := assert.New(t)
+
+		err := errors.Join(
+			genRuntimeError(),
+			NewRuntimeError(
+				"and two more", errors.Join(genPersistenceError(), genBadInputError()), true,
+			),
+		)
+
+		found := AllDeepestErrorsWithTrace(err)
+
+		assert.Len(found, 3)
+		var validationErr ValidationError
+		assert.True(errors.As(found[0], &validationErr))
+		var sqlErr SQLError
+		assert.True(errors.As(found[1], &sqlErr))
+		// The third branch's own root cause, reached through a second BadInputError ladder.
+		assert.True(errors.As(found[2], &validationErr))
+		assert.Contains(stackTraceOf(t, found[2]), "genValidationError")
+	})
+
+	// Case 4: the case that separates "deepest per branch" from "every traced error in the
+	// tree". The wrapper captured a stack of its own, but something nearer the root cause
+	// exists below it, so it must not be reported alongside that one.
+	t.Run("shadows a traced ancestor of a traced error", func(t *testing.T) {
+		assert := assert.New(t)
+
+		err := NewRuntimeError("wrapping", errors.Join(genRuntimeError()), true)
+
+		found := AllDeepestErrorsWithTrace(err)
+
+		assert.Len(found, 1)
+		var validationErr ValidationError
+		assert.True(errors.As(found[0], &validationErr))
+		var runtimeErr RuntimeError
+		assert.False(errors.As(found[0], &runtimeErr))
+	})
+
+	// Case 5: a branch that carried no stack anywhere contributes nothing rather than a nil
+	// entry a caller would have to filter before rendering.
+	t.Run("drops a branch that carried no stack", func(t *testing.T) {
+		assert := assert.New(t)
+
+		err := errors.Join(genUntracedError(), genPersistenceError(), genUntracedError())
+
+		found := AllDeepestErrorsWithTrace(err)
+
+		assert.Len(found, 1)
+		var sqlErr SQLError
+		assert.True(errors.As(found[0], &sqlErr))
+	})
+
+	// Case 6: nothing anywhere carried a stack. Nil rather than an empty slice, so a caller
+	// checks length once and falls back to the plain message.
+	t.Run("reports nothing when no error carried a stack", func(t *testing.T) {
+		assert := assert.New(t)
+
+		assert.Nil(AllDeepestErrorsWithTrace(genUntracedError()))
+		assert.Nil(AllDeepestErrorsWithTrace(errors.Join(genUntracedError(), genUntracedError())))
+		assert.Nil(AllDeepestErrorsWithTrace(nil))
+	})
+}
+
 func TestFindDeepestErrorStackTrace(t *testing.T) {
 
 	log.SetLevel(log.DebugLevel)
@@ -152,4 +295,19 @@ func TestFindDeepestErrorStackTrace(t *testing.T) {
 	assert.Contains(rendered, "genValidationError")
 	log.Debugf("deepest stack:\n%s", rendered)
 	log.Debugf("full error chain: %v", err)
+
+	// Handed a tree rather than a chain, the first branch's root cause is reported. What
+	// matters is that it is a root cause at all: walking with errors.Unwrap would have
+	// stopped at the outer wrapper and rendered the wrapping site instead.
+	joined := NewRuntimeError(
+		"two things failed", errors.Join(genPersistenceError(), genRuntimeError()), true,
+	)
+
+	deepest = DeepestErrorWithTrace(joined)
+	assert.NotNil(deepest)
+
+	var sqlErr SQLError
+	assert.True(errors.As(deepest, &sqlErr))
+	assert.False(errors.As(deepest, &runtimeErr))
+	assert.Contains(stackTraceOf(t, deepest), "genSQLError")
 }

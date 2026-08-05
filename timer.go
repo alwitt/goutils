@@ -97,10 +97,12 @@ func (t *intervalTimerImpl) Start(
 			case <-time.After(interval):
 				log.WithFields(t.LogTags).Debug("Calling handler")
 				if err := handler(); err != nil {
-					deepestErrWithStack := DeepestErrorWithTrace(err)
+					deepestErrorsWithStack := AllDeepestErrorsWithTrace(err)
 					logEntry := log.WithError(err).WithFields(t.LogTags)
-					if deepestErrWithStack != nil {
-						logEntry.Errorf("Timer handler failed:\n%+v", deepestErrWithStack)
+					if deepestErrorsWithStack != nil {
+						logEntry.Errorf(
+							"Timer handler failed:\n%s", PrintErrorsWithTrace(deepestErrorsWithStack),
+						)
 					} else {
 						logEntry.Error("Timer handler failed")
 					}

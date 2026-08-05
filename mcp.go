@@ -333,10 +333,14 @@ func (h MCPHandler) LoggingMiddleware(next mcp.MethodHandler) mcp.MethodHandler 
 			WithField("mcp_response_timestamp", respTimestamp.UTC().Format(time.RFC3339Nano)).
 			WithField("mcp_request_duration_ms", duration.Milliseconds())
 		if err != nil {
-			stackTraceErr := DeepestErrorWithTrace(err)
+			stackTraceErrors := AllDeepestErrorsWithTrace(err)
 			l := logHandle.WithError(err)
-			if stackTraceErr != nil {
-				l.Errorf("MCP Request failed:\n%+v\n%s", stackTraceErr, mcpRequestStr)
+			if stackTraceErrors != nil {
+				l.Errorf(
+					"MCP Request failed:\n%s\nOriginal MCP Request:\n%s",
+					PrintErrorsWithTrace(stackTraceErrors),
+					mcpRequestStr,
+				)
 			} else {
 				l.Errorf("MCP Request failed\n%s", mcpRequestStr)
 			}

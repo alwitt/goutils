@@ -230,13 +230,16 @@ func (p *taskProcessorImpl) StartEventLoop(wg *sync.WaitGroup) error {
 					return
 				}
 				if err := p.processNewTaskParam(newTaskParam); err != nil {
-					deepestErrWithStack := DeepestErrorWithTrace(err)
+					deepestErrorsWithStack := AllDeepestErrorsWithTrace(err)
 					logEntry := log.
 						WithError(err).
 						WithFields(p.LogTags).
 						WithField("param", reflect.TypeOf(newTaskParam).String())
-					if deepestErrWithStack != nil {
-						logEntry.Errorf("Failed to process new task param:\n%+v", deepestErrWithStack)
+					if deepestErrorsWithStack != nil {
+						logEntry.Errorf(
+							"Failed to process new task param:\n%s",
+							PrintErrorsWithTrace(deepestErrorsWithStack),
+						)
 					} else {
 						logEntry.Error("Failed to process new task param")
 					}

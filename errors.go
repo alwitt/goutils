@@ -1,7 +1,6 @@
 package goutils
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -83,18 +82,74 @@ func (e BaseError) callStack() []uintptr {
 	return e.Stack
 }
 
+// AllDeepestErrorsWithTrace walks err's Unwrap tree and returns, for every branch of it,
+// the deepest error (nearest the root cause) that captured a call stack. It returns nil if
+// no error in the tree carried one. The returned errors are the original tree links, so
+// callers may inspect their type, message, or render their trace via StackTrace / "%+v".
+//
+// An error is reported only when nothing beneath it carried a stack: a traced ancestor of a
+// traced error is shadowed, since the descendant is nearer the root cause. On a chain with
+// no branch in it that rule yields exactly one error, which is what makes
+// DeepestErrorWithTrace a special case of this.
+//
+// Branches are walked depth-first, left to right, so results arrive in the order
+// errors.Join received them - for a caller aggregating failures as it works, the order they
+// occurred. Duplicates are not collapsed: errors.Join(err, err) is a genuine double-report.
+//
+// Both wrap shapes are handled, which is the point of walking the tree here rather than
+// calling errors.Unwrap: that one is contractually single-error and reports a joined error
+// as the end of the chain, so a walker built on it stops at the outermost wrapper and
+// renders the wrapping site instead of the origin.
+func AllDeepestErrorsWithTrace(err error) []error {
+	if err == nil {
+		return nil
+	}
+
+	// The two assertions are mutually exclusive by construction - a type cannot declare two
+	// methods named Unwrap - so the order below is only for symmetry with errors.As.
+	var beneath []error
+	switch x := err.(type) {
+	case interface{ Unwrap() error }:
+		beneath = AllDeepestErrorsWithTrace(x.Unwrap())
+	case interface{ Unwrap() []error }:
+		for _, branch := range x.Unwrap() {
+			beneath = append(beneath, AllDeepestErrorsWithTrace(branch)...)
+		}
+	}
+
+	// Something nearer the root cause was found, so this error adds nothing.
+	if len(beneath) > 0 {
+		return beneath
+	}
+
+	if c, ok := err.(stackCarrier); ok && len(c.callStack()) > 0 {
+		return []error{err}
+	}
+
+	return nil
+}
+
 // DeepestErrorWithTrace walks err's Unwrap chain and returns the deepest error (nearest
 // the root cause) that captured a call stack. It returns nil if no error in the chain
 // carried one. The returned error is the original chain link, so callers may inspect
 // its type, message, or render its trace via StackTrace / "%+v".
+//
+// Handed a tree rather than a chain this reports the first branch's deepest error and says
+// nothing about the others. Use AllDeepestErrorsWithTrace when every origin matters.
 func DeepestErrorWithTrace(err error) error {
-	var deepest error
-	for ; err != nil; err = errors.Unwrap(err) {
-		if c, ok := err.(stackCarrier); ok && len(c.callStack()) > 0 {
-			deepest = err
-		}
+	if found := AllDeepestErrorsWithTrace(err); len(found) > 0 {
+		return found[0]
 	}
-	return deepest
+	return nil
+}
+
+// PrintErrorsWithTrace helper function for printing a list of errors with stack traces
+func PrintErrorsWithTrace(errs []error) string {
+	errStr := []string{}
+	for _, oneErr := range errs {
+		errStr = append(errStr, fmt.Sprintf("%+v", oneErr))
+	}
+	return strings.Join(errStr, "\n\n")
 }
 
 // ======================================================================================
