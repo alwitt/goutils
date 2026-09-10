@@ -1,0 +1,9 @@
+---
+version: "2"
+
+linters:
+  settings:
+    staticcheck:
+      # TODO FIXME: Disable "Using a deprecated function, variable, constant or field" until
+      # GCP PubSub integration is removed from the package.
+      checks: ["all", "-SA1019"]
